@@ -20,7 +20,11 @@ id = "60e1434d441e4268a57912b052985e6f"
 
 [[kv_namespaces]]
 binding = "PENDING_REQUESTS"
-id = "e63172db90bd4389bf472812c196e623"   # 替换为实际 ID
+id = "e63172db90bd4389bf472812c196e623" # 替换为实际 ID
+
+[[kv_namespaces]]
+binding = "LIST_CACHE"
+id = "13ab91db113e4b24b985dc6aee166810"   # 替换为实际 ID
 
 [triggers]
 crons = ["*/30 * * * *"]  # 每30分钟尝试同步一次
