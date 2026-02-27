@@ -16,8 +16,12 @@ const CACHE_TTL = 86400; // 24小时
 const cache = caches.default;
 
 function buildBindings(env) {
+  const raw = env.OFFLINE_MODE;
+  const offlineMode = raw === true || ['true', '1', 'yes', 'on'].includes(
+    String(raw ?? '').toLowerCase()
+  );
   return {
-    OFFLINE_MODE: env.OFFLINE_MODE === 'true',
+    OFFLINE_MODE: offlineMode,
     USER_DATA: env.USER_DATA,
     SESSIONS: env.SESSIONS,
     PENDING_SCORES: env.PENDING_SCORES

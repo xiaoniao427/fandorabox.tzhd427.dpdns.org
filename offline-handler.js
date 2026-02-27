@@ -161,7 +161,13 @@ export async function syncToOriginalServer(bindings) {
     const username = parts[1];
     if (!scoresByUser[username]) scoresByUser[username] = [];
     const scoreData = await PENDING_SCORES.get(key.name, 'json');
-    if (!scoreData || typeof scoreData !== 'object') {
+    if (
+      !scoreData ||
+      typeof scoreData !== 'object' ||
+      Array.isArray(scoreData) ||
+      !scoreData.songId ||
+      !scoreData.scoreData
+    ) {
       console.warn(`跳过无效暂存记录: ${key.name}`);
       continue;
     }
@@ -188,6 +194,10 @@ export async function syncToOriginalServer(bindings) {
 
     const userScores = scoresByUser[username] || [];
     for (const score of userScores) {
+      if (!score.songId || !score.scoreData) {
+        console.warn(`跳过字段缺失的成绩记录: ${score._kvKey || 'unknown'}`);
+        continue;
+      }
       const scoreUrl = `https://fandorabox.net/api/maichart/${score.songId}/score`;
 
       let uploadOk = false;
