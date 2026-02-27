@@ -15,7 +15,7 @@ async function handleRequest(request) {
   try {
     const url = new URL(request.url);
 
-    // 特殊处理 /ads.txt
+    // 1. 特殊处理 /ads.txt
     if (url.pathname === '/ads.txt') {
       return new Response(
         'google.com, pub-4002076249242835, DIRECT, f08c47fec0942fa0',
@@ -26,7 +26,7 @@ async function handleRequest(request) {
       );
     }
 
-    // 构造反向代理请求
+    // 2. 构造反向代理请求
     const targetUrl = TARGET_HOST + url.pathname + url.search;
     const newRequest = new Request(targetUrl, {
       method: request.method,
@@ -41,12 +41,11 @@ async function handleRequest(request) {
     newRequest.headers.set('Referer', TARGET_HOST + '/');
     newRequest.headers.delete('X-Forwarded-For');
 
-    // 发起请求
+    // 3. 发起请求
     let response = await fetch(newRequest);
 
-    // ---- 域名替换逻辑 ----
+    // 4. 域名替换：对所有文本类型响应进行替换
     const contentType = response.headers.get('Content-Type') || '';
-    // 只对文本类型进行替换
     if (contentType.includes('text/') || 
         contentType.includes('application/javascript') ||
         contentType.includes('application/json') ||
@@ -54,10 +53,8 @@ async function handleRequest(request) {
         contentType.includes('application/xhtml+xml')) {
       
       const originalText = await response.text();
-      // 将目标域名替换为代理域名（保留协议）
       const modifiedText = originalText.replace(/fandorabox\.net/g, PROXY_DOMAIN);
       
-      // 创建新响应，保留原状态码和大部分头部
       response = new Response(modifiedText, {
         status: response.status,
         statusText: response.statusText,
@@ -65,7 +62,7 @@ async function handleRequest(request) {
       });
     }
 
-    // ---- 广告插入逻辑 ----
+    // 5. 广告插入（仅 HTML）
     if (contentType.includes('text/html')) {
       const rewriter = new HTMLRewriter().on('main', {
         element(element) {
@@ -75,10 +72,10 @@ async function handleRequest(request) {
       response = rewriter.transform(response);
     }
 
-    // 包装响应以便修改头部（Cookie、Location、CSP 等）
+    // 6. 包装响应以修改头部
     const modifiedResponse = new Response(response.body, response);
 
-    // 处理 Set-Cookie：移除 Domain 限制
+    // 7. 处理 Set-Cookie：移除 Domain 限制
     const cookies = [];
     modifiedResponse.headers.forEach((value, key) => {
       if (key.toLowerCase() === 'set-cookie') {
@@ -93,13 +90,14 @@ async function handleRequest(request) {
       });
     }
 
-    // 处理重定向 Location（将目标域名替换为代理域名）
+    // 8. 处理重定向 Location（域名替换）
     const location = modifiedResponse.headers.get('Location');
     if (location) {
       try {
         const locationUrl = new URL(location, TARGET_HOST);
         if (locationUrl.hostname === TARGET_DOMAIN) {
           const workerUrl = new URL(request.url);
+          workerUrl.hostname = PROXY_DOMAIN; // 确保使用代理域名
           workerUrl.pathname = locationUrl.pathname;
           workerUrl.search = locationUrl.search;
           modifiedResponse.headers.set('Location', workerUrl.toString());
@@ -109,7 +107,7 @@ async function handleRequest(request) {
       }
     }
 
-    // 删除 CSP 并添加 CORS 头
+    // 9. 删除 CSP 并添加 CORS 头
     modifiedResponse.headers.delete('Content-Security-Policy');
     modifiedResponse.headers.delete('Content-Security-Policy-Report-Only');
     modifiedResponse.headers.set('Access-Control-Allow-Origin', '*');
