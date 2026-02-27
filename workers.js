@@ -2,10 +2,12 @@
 
 //引用广告相关逻辑
 import { AD_CODE } from './ads.js';
+//引用替换公告相关逻辑
+import { modifyNoticeResponse } from './notice-modifier.js';
 
 const TARGET_HOST = 'https://fandorabox.net';
 const TARGET_DOMAIN = new URL(TARGET_HOST).hostname;
-const PROXY_DOMAIN = 'fandorabox.tzhd427.dpdns.org'; // 您的代理域名
+const PROXY_DOMAIN = 'fandorabox.tzhd427.dpdns.org';
 
 addEventListener('fetch', event => {
   event.respondWith(handleRequest(event.request));
@@ -44,29 +46,9 @@ async function handleRequest(request) {
     // 发起请求
     let response = await fetch(newRequest);
 
-    // 仅对 /api/notice 的 JSON 响应进行域名替换
-    if (url.pathname === '/api/notice' && 
-        (response.headers.get('Content-Type') || '').includes('application/json')) {
-      
-      const originalJson = await response.json();
-      
-      // 替换 notice 内容中的特定链接
-      if (originalJson.content) {
-        originalJson.content = originalJson.content.replace(
-          /https:\/\/fandorabox\.tzhd427\.dpdns\.org\/nopvapi/g,
-          `https://${PROXY_DOMAIN}/nopvapi`
-        );
-      }
-      
-      // 重新构造 JSON 响应
-      response = new Response(JSON.stringify(originalJson), {
-        status: response.status,
-        statusText: response.statusText,
-        headers: {
-          ...Object.fromEntries(response.headers),
-          'Content-Type': 'application/json'
-        }
-      });
+    // 对 /api/notice 的 JSON 响应进行替换（使用独立模块）
+    if (url.pathname === '/api/notice') {
+      response = await modifyNoticeResponse(response);
     }
 
     // 广告插入（仅 HTML）
@@ -80,7 +62,7 @@ async function handleRequest(request) {
       response = rewriter.transform(response);
     }
 
-    // 包装响应以修改头部（Cookie、Location、CSP 等）
+    // 包装响应以修改头部
     const modifiedResponse = new Response(response.body, response);
 
     // 处理 Set-Cookie：移除 Domain 限制
