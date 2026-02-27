@@ -1,23 +1,11 @@
-// 反向代理目标域名
+//代理网站主要逻辑
+
+//引用广告相关逻辑
+import { AD_CODE } from './ads.js';
+
 const TARGET_HOST = 'https://fandorabox.net';
 const TARGET_DOMAIN = new URL(TARGET_HOST).hostname;
-
-// 广告代码（插入到 <main> 元素之后）
-const AD_CODE = `
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4002076249242835"
-     crossorigin="anonymous"></script>
-<!-- 页内正方形广告 -->
-<!-- 这个广告是代理站作者加的，和原作者没关系，要骂就骂我 -->
-<ins class="adsbygoogle"
-     style="display:block"
-     data-ad-client="ca-pub-4002076249242835"
-     data-ad-slot="7425310120"
-     data-ad-format="auto"
-     data-full-width-responsive="true"></ins>
-<script>
-     (adsbygoogle = window.adsbygoogle || []).push({});
-</script>
-`;
+const PROXY_DOMAIN = 'fandorabox.tzhd427.dpdns.org';
 
 addEventListener('fetch', event => {
   event.respondWith(handleRequest(event.request));
@@ -27,7 +15,7 @@ async function handleRequest(request) {
   try {
     const url = new URL(request.url);
 
-    // 1. 特殊处理 /ads.txt 请求
+    // 特殊处理 /ads.txt
     if (url.pathname === '/ads.txt') {
       return new Response(
         'google.com, pub-4002076249242835, DIRECT, f08c47fec0942fa0',
@@ -38,7 +26,7 @@ async function handleRequest(request) {
       );
     }
 
-    // 2. 构造反向代理请求
+    // 构造反向代理请求
     const targetUrl = TARGET_HOST + url.pathname + url.search;
     const newRequest = new Request(targetUrl, {
       method: request.method,
@@ -53,25 +41,44 @@ async function handleRequest(request) {
     newRequest.headers.set('Referer', TARGET_HOST + '/');
     newRequest.headers.delete('X-Forwarded-For');
 
-    // 3. 发起请求
+    // 发起请求
     let response = await fetch(newRequest);
 
-    // 4. 如果是 HTML 内容，使用 HTMLRewriter 在 <main> 元素之后插入广告代码
+    // ---- 域名替换逻辑 ----
     const contentType = response.headers.get('Content-Type') || '';
+    // 只对文本类型进行替换
+    if (contentType.includes('text/') || 
+        contentType.includes('application/javascript') ||
+        contentType.includes('application/json') ||
+        contentType.includes('application/xml') ||
+        contentType.includes('application/xhtml+xml')) {
+      
+      const originalText = await response.text();
+      // 将目标域名替换为代理域名（保留协议）
+      const modifiedText = originalText.replace(/fandorabox\.net/g, PROXY_DOMAIN);
+      
+      // 创建新响应，保留原状态码和大部分头部
+      response = new Response(modifiedText, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers
+      });
+    }
+
+    // ---- 广告插入逻辑 ----
     if (contentType.includes('text/html')) {
       const rewriter = new HTMLRewriter().on('main', {
         element(element) {
-          // 在 <main> 之后插入广告（作为兄弟元素）
           element.after(AD_CODE, { html: true });
         }
       });
       response = rewriter.transform(response);
     }
 
-    // 5. 包装响应以便修改头部
+    // 包装响应以便修改头部（Cookie、Location、CSP 等）
     const modifiedResponse = new Response(response.body, response);
 
-    // 6. 处理 Set-Cookie：移除 Domain 限制
+    // 处理 Set-Cookie：移除 Domain 限制
     const cookies = [];
     modifiedResponse.headers.forEach((value, key) => {
       if (key.toLowerCase() === 'set-cookie') {
@@ -86,7 +93,7 @@ async function handleRequest(request) {
       });
     }
 
-    // 7. 处理重定向 Location（将目标域名替换为当前 Worker 域名）
+    // 处理重定向 Location（将目标域名替换为代理域名）
     const location = modifiedResponse.headers.get('Location');
     if (location) {
       try {
@@ -102,7 +109,7 @@ async function handleRequest(request) {
       }
     }
 
-    // 8. 删除 CSP 并添加 CORS 头（可选）
+    // 删除 CSP 并添加 CORS 头
     modifiedResponse.headers.delete('Content-Security-Policy');
     modifiedResponse.headers.delete('Content-Security-Policy-Report-Only');
     modifiedResponse.headers.set('Access-Control-Allow-Origin', '*');
