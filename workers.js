@@ -5,7 +5,7 @@ import { AD_CODE } from './ads.js';
 
 const TARGET_HOST = 'https://fandorabox.net';
 const TARGET_DOMAIN = new URL(TARGET_HOST).hostname;
-const PROXY_DOMAIN = 'fandorabox.tzhd427.dpdns.org';
+const PROXY_DOMAIN = 'fandorabox.tzhd427.dpdns.org'; // 您的代理域名
 
 addEventListener('fetch', event => {
   event.respondWith(handleRequest(event.request));
@@ -44,25 +44,33 @@ async function handleRequest(request) {
     // 发起请求
     let response = await fetch(newRequest);
 
-    // 域名替换：对所有文本类型响应进行替换
-    const contentType = response.headers.get('Content-Type') || '';
-    if (contentType.includes('text/') || 
-        contentType.includes('application/javascript') ||
-        contentType.includes('application/json') ||
-        contentType.includes('application/xml') ||
-        contentType.includes('application/xhtml+xml')) {
+    // 仅对 /api/notice 的 JSON 响应进行域名替换
+    if (url.pathname === '/api/notice' && 
+        (response.headers.get('Content-Type') || '').includes('application/json')) {
       
-      const originalText = await response.text();
-      const modifiedText = originalText.replace(/fandorabox\.net/g, PROXY_DOMAIN);
+      const originalJson = await response.json();
       
-      response = new Response(modifiedText, {
+      // 替换 notice 内容中的特定链接
+      if (originalJson.content) {
+        originalJson.content = originalJson.content.replace(
+          /https:\/\/fandorabox\.tzhd427\.dpdns\.org\/nopvapi/g,
+          `https://${PROXY_DOMAIN}/nopvapi`
+        );
+      }
+      
+      // 重新构造 JSON 响应
+      response = new Response(JSON.stringify(originalJson), {
         status: response.status,
         statusText: response.statusText,
-        headers: response.headers
+        headers: {
+          ...Object.fromEntries(response.headers),
+          'Content-Type': 'application/json'
+        }
       });
     }
 
     // 广告插入（仅 HTML）
+    const contentType = response.headers.get('Content-Type') || '';
     if (contentType.includes('text/html')) {
       const rewriter = new HTMLRewriter().on('main', {
         element(element) {
@@ -72,7 +80,7 @@ async function handleRequest(request) {
       response = rewriter.transform(response);
     }
 
-    // 包装响应以修改头部
+    // 包装响应以修改头部（Cookie、Location、CSP 等）
     const modifiedResponse = new Response(response.body, response);
 
     // 处理 Set-Cookie：移除 Domain 限制
@@ -97,7 +105,7 @@ async function handleRequest(request) {
         const locationUrl = new URL(location, TARGET_HOST);
         if (locationUrl.hostname === TARGET_DOMAIN) {
           const workerUrl = new URL(request.url);
-          workerUrl.hostname = PROXY_DOMAIN; // 确保使用代理域名
+          workerUrl.hostname = PROXY_DOMAIN;
           workerUrl.pathname = locationUrl.pathname;
           workerUrl.search = locationUrl.search;
           modifiedResponse.headers.set('Location', workerUrl.toString());
