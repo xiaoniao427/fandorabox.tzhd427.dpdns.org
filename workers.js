@@ -16,7 +16,7 @@ const CACHE_TTL = 86400; // 24小时
 const cache = caches.default;
 
 // 从全局获取绑定的 KV 和变量（Service Worker 格式）
-const OFFLINE_MODE = globalThis.OFFLINE_MODE === 'false'; // 布尔值
+const OFFLINE_MODE = globalThis.OFFLINE_MODE === 'true'; // 布尔值
 const USER_DATA = globalThis.USER_DATA;
 const SESSIONS = globalThis.SESSIONS;
 const PENDING_SCORES = globalThis.PENDING_SCORES;
