@@ -9,7 +9,7 @@ import { handleListAllCache } from './custom-handlers.js';
 //导入离线暂存相关逻辑
 import { handleOfflineRequest, syncToOriginalServer } from './offline-handler.js';
 
-
+const LIST_CACHE = globalThis.LIST_CACHE;
 const TARGET_HOST = 'https://fandorabox.net';
 const TARGET_DOMAIN = new URL(TARGET_HOST).hostname;
 const PROXY_DOMAIN = 'fandorabox.tzhd427.dpdns.org';
@@ -29,7 +29,8 @@ const bindings = {
   USER_DATA,
   SESSIONS,
   PENDING_SCORES,
-  PENDING_REQUESTS
+  PENDING_REQUESTS,
+  LIST_CACHE
 };
 
 addEventListener('fetch', event => {
