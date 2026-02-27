@@ -160,6 +160,10 @@ export async function syncToOriginalServer(bindings) {
     const username = parts[1];
     if (!scoresByUser[username]) scoresByUser[username] = [];
     const scoreData = await PENDING_SCORES.get(key.name, 'json');
+    if (!scoreData || typeof scoreData !== 'object') {
+      console.warn(`跳过无效暂存记录: ${key.name}`);
+      continue;
+    }
     scoresByUser[username].push({ ...scoreData, _kvKey: key.name });
   }
 
@@ -184,25 +188,37 @@ export async function syncToOriginalServer(bindings) {
     const userScores = scoresByUser[username] || [];
     for (const score of userScores) {
       const scoreUrl = `https://fandorabox.net/api/maichart/${score.songId}/score`;
-      await fetch(scoreUrl, {
-        method: 'POST',
-        headers: {
-          'Cookie': originalCookies,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(score.scoreData)
-      });
 
-      // 清理已同步的数据：优先使用原始 KV key，兜底尝试所有历史命名
-      if (score._kvKey) {
-        await PENDING_SCORES.delete(score._kvKey);
-      } else {
-        // 兼容旧记录：尝试 keyTimestamp 和 timestamp 两种格式
-        if (score.keyTimestamp) {
-          await PENDING_SCORES.delete(`score:${username}:${score.songId}:${score.keyTimestamp}`);
+      let uploadOk = false;
+      try {
+        const res = await fetch(scoreUrl, {
+          method: 'POST',
+          headers: {
+            'Cookie': originalCookies,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(score.scoreData)
+        });
+        uploadOk = res.ok;
+        if (!uploadOk) {
+          console.warn(`上传成绩失败 (${res.status}): ${score._kvKey || score.songId}`);
         }
-        if (score.timestamp) {
-          await PENDING_SCORES.delete(`score:${username}:${score.songId}:${score.timestamp}`);
+      } catch (err) {
+        console.error(`上传成绩异常: ${score._kvKey || score.songId}`, err);
+      }
+
+      // 仅在上传成功时清理暂存数据
+      if (uploadOk) {
+        if (score._kvKey) {
+          await PENDING_SCORES.delete(score._kvKey);
+        } else {
+          // 兼容旧记录：尝试 keyTimestamp 和 timestamp 两种格式
+          if (score.keyTimestamp) {
+            await PENDING_SCORES.delete(`score:${username}:${score.songId}:${score.keyTimestamp}`);
+          }
+          if (score.timestamp) {
+            await PENDING_SCORES.delete(`score:${username}:${score.songId}:${score.timestamp}`);
+          }
         }
       }
     }
