@@ -15,7 +15,7 @@ async function handleRequest(request) {
   try {
     const url = new URL(request.url);
 
-    // 1. 特殊处理 /ads.txt
+    // 特殊处理 /ads.txt
     if (url.pathname === '/ads.txt') {
       return new Response(
         'google.com, pub-4002076249242835, DIRECT, f08c47fec0942fa0',
@@ -26,7 +26,7 @@ async function handleRequest(request) {
       );
     }
 
-    // 2. 构造反向代理请求
+    // 构造反向代理请求
     const targetUrl = TARGET_HOST + url.pathname + url.search;
     const newRequest = new Request(targetUrl, {
       method: request.method,
@@ -41,10 +41,10 @@ async function handleRequest(request) {
     newRequest.headers.set('Referer', TARGET_HOST + '/');
     newRequest.headers.delete('X-Forwarded-For');
 
-    // 3. 发起请求
+    // 发起请求
     let response = await fetch(newRequest);
 
-    // 4. 域名替换：对所有文本类型响应进行替换
+    // 域名替换：对所有文本类型响应进行替换
     const contentType = response.headers.get('Content-Type') || '';
     if (contentType.includes('text/') || 
         contentType.includes('application/javascript') ||
@@ -62,7 +62,7 @@ async function handleRequest(request) {
       });
     }
 
-    // 5. 广告插入（仅 HTML）
+    // 广告插入（仅 HTML）
     if (contentType.includes('text/html')) {
       const rewriter = new HTMLRewriter().on('main', {
         element(element) {
@@ -72,10 +72,10 @@ async function handleRequest(request) {
       response = rewriter.transform(response);
     }
 
-    // 6. 包装响应以修改头部
+    // 包装响应以修改头部
     const modifiedResponse = new Response(response.body, response);
 
-    // 7. 处理 Set-Cookie：移除 Domain 限制
+    // 处理 Set-Cookie：移除 Domain 限制
     const cookies = [];
     modifiedResponse.headers.forEach((value, key) => {
       if (key.toLowerCase() === 'set-cookie') {
@@ -90,7 +90,7 @@ async function handleRequest(request) {
       });
     }
 
-    // 8. 处理重定向 Location（域名替换）
+    // 处理重定向 Location（域名替换）
     const location = modifiedResponse.headers.get('Location');
     if (location) {
       try {
@@ -107,7 +107,7 @@ async function handleRequest(request) {
       }
     }
 
-    // 9. 删除 CSP 并添加 CORS 头
+    // 删除 CSP 并添加 CORS 头
     modifiedResponse.headers.delete('Content-Security-Policy');
     modifiedResponse.headers.delete('Content-Security-Policy-Report-Only');
     modifiedResponse.headers.set('Access-Control-Allow-Origin', '*');
