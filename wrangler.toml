@@ -20,7 +20,8 @@ id = "60e1434d441e4268a57912b052985e6f"
 [triggers]
 crons = ["0 */6 * * *"]  # 每6小时尝试同步一次
 
+
 [observability]
 [observability.logs]
-enabled = false
+enabled = true
 invocation_logs = true
