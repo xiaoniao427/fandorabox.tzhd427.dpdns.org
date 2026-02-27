@@ -97,12 +97,13 @@ export async function handleOfflineRequest(request, bindings) {
     const songId = path.split('/')[3];
     const scoreData = await request.json();
 
-    const scoreKey = `score:${username}:${songId}:${Date.now()}`;
+    const ts = Date.now();
+    const scoreKey = `score:${username}:${songId}:${ts}`;
     await PENDING_SCORES.put(scoreKey, JSON.stringify({
       songId,
       username,
       scoreData,
-      timestamp: new Date().toISOString()
+      keyTimestamp: ts
     }));
 
     return new Response(JSON.stringify({ ok: true }), {
@@ -193,7 +194,7 @@ export async function syncToOriginalServer(bindings) {
       });
 
       // 清理已同步的数据
-      await PENDING_SCORES.delete(`score:${username}:${score.songId}:${score.timestamp}`);
+      await PENDING_SCORES.delete(`score:${username}:${score.songId}:${score.keyTimestamp}`);
     }
   }
 

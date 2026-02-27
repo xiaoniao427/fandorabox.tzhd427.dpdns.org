@@ -15,30 +15,33 @@ const PROXY_DOMAIN = 'fandorabox.tzhd427.dpdns.org';
 const CACHE_TTL = 86400; // 24小时
 const cache = caches.default;
 
-// 从全局获取绑定的 KV 和变量（Service Worker 格式）
-const OFFLINE_MODE = globalThis.OFFLINE_MODE === 'true'; // 布尔值
-const USER_DATA = globalThis.USER_DATA;
-const SESSIONS = globalThis.SESSIONS;
-const PENDING_SCORES = globalThis.PENDING_SCORES;
+export default {
+  // 处理 HTTP 请求
+  async fetch(request, env, ctx) {
+    return handleRequest(request, env);
+  },
 
-// 准备传递给离线模块的绑定对象
-const bindings = {
-  OFFLINE_MODE,
-  USER_DATA,
-  SESSIONS,
-  PENDING_SCORES
+  // 定时触发器（需在 wrangler.toml 中配置）
+  async scheduled(event, env, ctx) {
+    const bindings = {
+      OFFLINE_MODE: env.OFFLINE_MODE === 'true',
+      USER_DATA: env.USER_DATA,
+      SESSIONS: env.SESSIONS,
+      PENDING_SCORES: env.PENDING_SCORES
+    };
+    await syncToOriginalServer(bindings);
+  }
 };
 
-addEventListener('fetch', event => {
-  event.respondWith(handleRequest(event.request));
-});
+async function handleRequest(request, env) {
+  const OFFLINE_MODE = env.OFFLINE_MODE === 'true';
+  const bindings = {
+    OFFLINE_MODE,
+    USER_DATA: env.USER_DATA,
+    SESSIONS: env.SESSIONS,
+    PENDING_SCORES: env.PENDING_SCORES
+  };
 
-// 定时触发器（需在 wrangler.toml 中配置）
-addEventListener('scheduled', event => {
-  event.waitUntil(syncToOriginalServer(bindings));
-});
-
-async function handleRequest(request) {
   try {
     const url = new URL(request.url);
 
