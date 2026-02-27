@@ -3,7 +3,7 @@ main = "workers.js"
 compatibility_date = "2026-02-26"
 
 [vars]
-OFFLINE_MODE = "true"  # 设为 "true" 启用离线模拟（测试用，平时保持关闭）
+OFFLINE_MODE = "false"  # 设为 "true" 启用离线模拟（测试用，平时保持关闭）
 
 [[kv_namespaces]]
 binding = "USER_DATA"
