@@ -2,7 +2,7 @@
 const TARGET_HOST = 'https://fandorabox.net';
 const TARGET_DOMAIN = new URL(TARGET_HOST).hostname;
 
-// 广告代码（插入到 HTML body 尾部）
+// 广告代码（插入到 <main> 元素之后）
 const AD_CODE = `
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4002076249242835"
      crossorigin="anonymous"></script>
@@ -55,18 +55,19 @@ async function handleRequest(request) {
     // 3. 发起请求
     let response = await fetch(newRequest);
 
-    // 4. 如果是 HTML 内容，使用 HTMLRewriter 在 <body> 尾部插入广告代码
+    // 4. 如果是 HTML 内容，使用 HTMLRewriter 在 <main> 元素之后插入广告代码
     const contentType = response.headers.get('Content-Type') || '';
     if (contentType.includes('text/html')) {
-      const rewriter = new HTMLRewriter().on('body', {
+      const rewriter = new HTMLRewriter().on('main', {
         element(element) {
-          element.append(AD_CODE, { html: true }); // 在 body 内部末尾追加
+          // 在 <main> 之后插入广告（作为兄弟元素）
+          element.after(AD_CODE, { html: true });
         }
       });
-      response = rewriter.transform(response); // response 此时变为转换后的新 Response
+      response = rewriter.transform(response);
     }
 
-    // 5. 包装响应以便修改头部（保持与原有代码风格一致）
+    // 5. 包装响应以便修改头部
     const modifiedResponse = new Response(response.body, response);
 
     // 6. 处理 Set-Cookie：移除 Domain 限制
@@ -79,7 +80,6 @@ async function handleRequest(request) {
     if (cookies.length > 0) {
       modifiedResponse.headers.delete('Set-Cookie');
       cookies.forEach(cookie => {
-        // 移除 Domain 属性（也可根据需要改为 worker 域名）
         let newCookie = cookie.replace(/;?\s*Domain=[^;]*/i, '');
         modifiedResponse.headers.append('Set-Cookie', newCookie);
       });
