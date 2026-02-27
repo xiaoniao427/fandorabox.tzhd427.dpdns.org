@@ -153,14 +153,14 @@ export async function syncToOriginalServer(bindings) {
   const credList = await USER_DATA.list({ prefix: 'cred:' });
   const pendingScoresList = await PENDING_SCORES.list({ prefix: 'score:' });
 
-  // 按用户分组暂存成绩
+  // 按用户分组暂存成绩，保留原始 KV key 用于删除
   const scoresByUser = {};
   for (const key of pendingScoresList.keys) {
     const parts = key.name.split(':');
     const username = parts[1];
     if (!scoresByUser[username]) scoresByUser[username] = [];
     const scoreData = await PENDING_SCORES.get(key.name, 'json');
-    scoresByUser[username].push(scoreData);
+    scoresByUser[username].push({ ...scoreData, _kvKey: key.name });
   }
 
   for (const credKey of credList.keys) {
@@ -193,8 +193,18 @@ export async function syncToOriginalServer(bindings) {
         body: JSON.stringify(score.scoreData)
       });
 
-      // 清理已同步的数据
-      await PENDING_SCORES.delete(`score:${username}:${score.songId}:${score.keyTimestamp}`);
+      // 清理已同步的数据：优先使用原始 KV key，兜底尝试所有历史命名
+      if (score._kvKey) {
+        await PENDING_SCORES.delete(score._kvKey);
+      } else {
+        // 兼容旧记录：尝试 keyTimestamp 和 timestamp 两种格式
+        if (score.keyTimestamp) {
+          await PENDING_SCORES.delete(`score:${username}:${score.songId}:${score.keyTimestamp}`);
+        }
+        if (score.timestamp) {
+          await PENDING_SCORES.delete(`score:${username}:${score.songId}:${score.timestamp}`);
+        }
+      }
     }
   }
 

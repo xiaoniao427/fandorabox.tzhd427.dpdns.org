@@ -15,6 +15,15 @@ const PROXY_DOMAIN = 'fandorabox.tzhd427.dpdns.org';
 const CACHE_TTL = 86400; // 24小时
 const cache = caches.default;
 
+function buildBindings(env) {
+  return {
+    OFFLINE_MODE: env.OFFLINE_MODE === 'true',
+    USER_DATA: env.USER_DATA,
+    SESSIONS: env.SESSIONS,
+    PENDING_SCORES: env.PENDING_SCORES
+  };
+}
+
 export default {
   // 处理 HTTP 请求
   async fetch(request, env, ctx) {
@@ -23,24 +32,13 @@ export default {
 
   // 定时触发器（需在 wrangler.toml 中配置）
   async scheduled(event, env, ctx) {
-    const bindings = {
-      OFFLINE_MODE: env.OFFLINE_MODE === 'true',
-      USER_DATA: env.USER_DATA,
-      SESSIONS: env.SESSIONS,
-      PENDING_SCORES: env.PENDING_SCORES
-    };
-    await syncToOriginalServer(bindings);
+    await syncToOriginalServer(buildBindings(env));
   }
 };
 
 async function handleRequest(request, env) {
-  const OFFLINE_MODE = env.OFFLINE_MODE === 'true';
-  const bindings = {
-    OFFLINE_MODE,
-    USER_DATA: env.USER_DATA,
-    SESSIONS: env.SESSIONS,
-    PENDING_SCORES: env.PENDING_SCORES
-  };
+  const bindings = buildBindings(env);
+  const { OFFLINE_MODE } = bindings;
 
   try {
     const url = new URL(request.url);
