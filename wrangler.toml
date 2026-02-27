@@ -2,6 +2,8 @@ name = "fandorabox"
 main = "workers.js"
 compatibility_date = "2026-02-26"
 
+[vars]
+OFFLINE_MODE = "false"  # 设为 "true" 启用离线模拟（测试用，平时保持关闭）
 
 [[kv_namespaces]]
 binding = "USER_DATA"
@@ -14,3 +16,6 @@ id = "d96787ddbe764df79cdccdd0b4535032"
 [[kv_namespaces]]
 binding = "PENDING_SCORES"
 id = "60e1434d441e4268a57912b052985e6f"
+
+[triggers]
+crons = ["0 */6 * * *"]  # 每6小时尝试同步一次
