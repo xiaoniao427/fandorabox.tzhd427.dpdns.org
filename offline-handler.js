@@ -186,23 +186,11 @@ export async function handleOfflineRequest(request, bindings, event) {
   return null;
 }
 
-// 同步函数（包括成绩上传和请求回放）
+// 同步函数（每30分钟触发一次，不再检查原站在线状态）
 export async function syncToOriginalServer(bindings) {
   const { USER_DATA, SESSIONS, PENDING_SCORES, PENDING_REQUESTS } = bindings;
 
-  // 检查原站是否在线：改用 HEAD 请求首页（原无 /api/health）
-  try {
-    const homeCheck = await fetch('https://fandorabox.net/', { method: 'HEAD' });
-    if (!homeCheck.ok) {
-      console.log('原站返回非200状态，视为离线');
-      return;
-    }
-  } catch (error) {
-    console.log('原站连接失败，视为离线', error.message);
-    return;
-  }
-
-  console.log('原站已恢复，开始同步数据...');
+  console.log('开始尝试同步数据（无论原站是否在线）...');
 
   // ---- 回放请求记录 ----
   const reqList = await PENDING_REQUESTS.list({ prefix: 'req:' });
@@ -316,17 +304,26 @@ export async function syncToOriginalServer(bindings) {
     const userScores = scoresByUser[username] || [];
     for (const score of userScores) {
       const scoreUrl = `https://fandorabox.net/api/maichart/${score.songId}/score`;
-      await fetch(scoreUrl, {
-        method: 'POST',
-        headers: {
-          'Cookie': originalCookieHeader,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(score.scoreData)
-      });
-      await PENDING_SCORES.delete(`score:${username}:${score.songId}:${score.timestamp}`);
+      try {
+        const uploadRes = await fetch(scoreUrl, {
+          method: 'POST',
+          headers: {
+            'Cookie': originalCookieHeader,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(score.scoreData)
+        });
+        if (uploadRes.ok) {
+          await PENDING_SCORES.delete(`score:${username}:${score.songId}:${score.timestamp}`);
+          console.log(`Uploaded score for ${username} successfully`);
+        } else {
+          console.error(`Failed to upload score for ${username}: ${uploadRes.status}`);
+        }
+      } catch (e) {
+        console.error(`Error uploading score for ${username}:`, e);
+      }
     }
   }
 
-  console.log('数据同步完成');
+  console.log('同步尝试完成');
 }
