@@ -17,11 +17,18 @@ id = "d96787ddbe764df79cdccdd0b4535032"
 binding = "PENDING_SCORES"
 id = "60e1434d441e4268a57912b052985e6f"
 
+[[kv_namespaces]]
+binding = "PENDING_REQUESTS"
+id = "e63172db90bd4389bf472812c196e623"   # 替换为实际 ID
+
 [triggers]
-crons = ["0 */6 * * *"]  # 每6小时尝试同步一次
+crons = ["*/30 * * * *"]  # 每30分钟尝试同步一次
 
 
 [observability]
 [observability.logs]
 enabled = true
 invocation_logs = true
+
+[observability.traces]
+enabled = true

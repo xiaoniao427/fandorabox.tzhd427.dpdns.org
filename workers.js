@@ -49,9 +49,9 @@ async function handleRequest(request, env) {
   try {
     const url = new URL(request.url);
 
-    // 离线模式处理
+    // 离线模式处理（传入 event 用于 waitUntil）
     if (OFFLINE_MODE) {
-      const offlineResponse = await handleOfflineRequest(request, bindings);
+      const offlineResponse = await handleOfflineRequest(request, bindings, event);
       if (offlineResponse) return offlineResponse;
     }
 
@@ -67,10 +67,11 @@ async function handleRequest(request, env) {
       return getCustomNoticeResponse();
     }
 
+    // 曲目列表缓存
     const listAllResponse = await handleListAllCache(request, TARGET_HOST);
     if (listAllResponse) return listAllResponse;
 
-    // 根路径缓存处理
+    // 根路径缓存
     if (url.pathname === '/' && request.method === 'GET') {
       const cacheKey = new Request(TARGET_HOST + '/', { method: 'GET' });
       const cachedResponse = await cache.match(cacheKey);
@@ -106,7 +107,7 @@ async function handleRequest(request, env) {
 
     const modifiedResponse = new Response(response.body, response);
 
-    // 处理 Set-Cookie：移除 Domain 限制
+    // 处理 Set-Cookie
     const cookies = [];
     modifiedResponse.headers.forEach((value, key) => {
       if (key.toLowerCase() === 'set-cookie') {
@@ -121,7 +122,7 @@ async function handleRequest(request, env) {
       });
     }
 
-    // 处理重定向 Location（域名替换）
+    // 处理重定向 Location
     const location = modifiedResponse.headers.get('Location');
     if (location) {
       try {
@@ -136,7 +137,7 @@ async function handleRequest(request, env) {
       } catch (e) {}
     }
 
-    // 删除 CSP 并添加 CORS 头
+    // 删除 CSP，添加 CORS
     modifiedResponse.headers.delete('Content-Security-Policy');
     modifiedResponse.headers.delete('Content-Security-Policy-Report-Only');
     modifiedResponse.headers.set('Access-Control-Allow-Origin', '*');
