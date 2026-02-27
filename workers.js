@@ -18,6 +18,7 @@ const cache = caches.default;
 
 // 从全局获取绑定的 KV 和变量
 const OFFLINE_MODE = globalThis.OFFLINE_MODE === 'true';
+const SYNC_PASSWORD = globalThis.SYNC_PASSWORD; // 新增：手动同步密码
 const USER_DATA = globalThis.USER_DATA;
 const SESSIONS = globalThis.SESSIONS;
 const PENDING_SCORES = globalThis.PENDING_SCORES;
@@ -44,9 +45,24 @@ async function handleRequest(request, event) {
   try {
     const url = new URL(request.url);
 
-    // ===== 新增：手动同步端点（公开，任何人都可触发）=====
+    // ===== 手动同步端点（需密码鉴权）=====
     if (url.pathname === '/api/manual-sync') {
-      // 立即执行同步（可能耗时，直接等待）
+      // 检查密码是否配置
+      if (!SYNC_PASSWORD) {
+        return new Response(JSON.stringify({ success: false, error: 'Sync password not configured' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      // 获取查询参数中的密码
+      const password = url.searchParams.get('password');
+      if (password !== SYNC_PASSWORD) {
+        return new Response(JSON.stringify({ success: false, error: 'Forbidden' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      // 执行同步（可能耗时，直接等待）
       try {
         await syncToOriginalServer(bindings);
         return new Response(JSON.stringify({ success: true, message: '同步完成' }), {
