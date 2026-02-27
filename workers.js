@@ -1,15 +1,17 @@
 //代理网站主要逻辑
 
-//引用广告相关逻辑
+//导入广告相关逻辑
 import { AD_CODE } from './ads.js';
-//引用替换公告相关逻辑
+//导入自定义公告相关逻辑
 import { getCustomNoticeResponse } from './notice-modifier.js';
-//引用缓存谱面列表相关逻辑
+//导入缓存相关逻辑
 import { handleListAllCache } from './custom-handlers.js';
 
 const TARGET_HOST = 'https://fandorabox.net';
 const TARGET_DOMAIN = new URL(TARGET_HOST).hostname;
 const PROXY_DOMAIN = 'fandorabox.tzhd427.dpdns.org';
+const CACHE_TTL = 86400; // 24小时（秒）
+const cache = caches.default;
 
 addEventListener('fetch', event => {
   event.respondWith(handleRequest(event.request));
@@ -19,11 +21,8 @@ async function handleRequest(request) {
   try {
     const url = new URL(request.url);
 
-    // 处理缓存路径
-    const listAllResponse = await handleListAllCache(request, TARGET_HOST);
-    if (listAllResponse) return listAllResponse;
-
-    // 特殊处理 /ads.txt
+    // 处理Google广告标记路径
+    //    - /ads.txt
     if (url.pathname === '/ads.txt') {
       return new Response(
         'google.com, pub-4002076249242835, DIRECT, f08c47fec0942fa0',
@@ -31,9 +30,22 @@ async function handleRequest(request) {
       );
     }
 
-    // 处理 /api/notice（直接返回自定义公告）
+    //    - /api/notice（直接返回自定义公告）
     if (url.pathname === '/api/notice') {
       return getCustomNoticeResponse();
+    }
+
+    //    - /api/maichart/list.all（使用独立缓存模块）
+    const listAllResponse = await handleListAllCache(request, TARGET_HOST);
+    if (listAllResponse) return listAllResponse;
+
+    // 根路径缓存处理（仅 GET 请求）
+    if (url.pathname === '/' && request.method === 'GET') {
+      const cacheKey = new Request(TARGET_HOST + '/', { method: 'GET' });
+      const cachedResponse = await cache.match(cacheKey);
+      if (cachedResponse) {
+        return cachedResponse; // 缓存命中，直接返回（已包含广告）
+      }
     }
 
     // 反向代理其他请求
@@ -45,6 +57,7 @@ async function handleRequest(request) {
       redirect: 'manual'
     });
 
+    // 修改关键头部，模拟从目标域名发起的请求
     newRequest.headers.set('Host', TARGET_DOMAIN);
     newRequest.headers.set('Origin', TARGET_HOST);
     newRequest.headers.set('Referer', TARGET_HOST + '/');
@@ -56,17 +69,22 @@ async function handleRequest(request) {
     const contentType = response.headers.get('Content-Type') || '';
     if (contentType.includes('text/html')) {
       const rewriter = new HTMLRewriter().on('main', {
-        element(element) { element.after(AD_CODE, { html: true }); }
+        element(element) {
+          element.after(AD_CODE, { html: true });
+        }
       });
       response = rewriter.transform(response);
     }
 
+    // 包装响应以便修改头部（Cookie、Location、CSP 等）
     const modifiedResponse = new Response(response.body, response);
 
-    // 处理 Set-Cookie
+    // 处理 Set-Cookie：移除 Domain 限制
     const cookies = [];
     modifiedResponse.headers.forEach((value, key) => {
-      if (key.toLowerCase() === 'set-cookie') cookies.push(value);
+      if (key.toLowerCase() === 'set-cookie') {
+        cookies.push(value);
+      }
     });
     if (cookies.length) {
       modifiedResponse.headers.delete('Set-Cookie');
@@ -76,7 +94,7 @@ async function handleRequest(request) {
       });
     }
 
-    // 处理重定向 Location
+    // 处理重定向 Location（域名替换）
     const location = modifiedResponse.headers.get('Location');
     if (location) {
       try {
@@ -91,10 +109,23 @@ async function handleRequest(request) {
       } catch (e) {}
     }
 
-    // 删除 CSP 并添加 CORS
+    // 删除 CSP 并添加 CORS 头
     modifiedResponse.headers.delete('Content-Security-Policy');
     modifiedResponse.headers.delete('Content-Security-Policy-Report-Only');
     modifiedResponse.headers.set('Access-Control-Allow-Origin', '*');
+
+    // 如果是根路径且响应成功，存入缓存（包含广告）
+    if (url.pathname === '/' && request.method === 'GET' && modifiedResponse.status === 200) {
+      const responseToCache = modifiedResponse.clone();
+      const newHeaders = new Headers(responseToCache.headers);
+      newHeaders.set('Cache-Control', `public, max-age=${CACHE_TTL}`);
+      const cachedResponse = new Response(responseToCache.body, {
+        status: responseToCache.status,
+        statusText: responseToCache.statusText,
+        headers: newHeaders
+      });
+      await cache.put(new Request(TARGET_HOST + '/', { method: 'GET' }), cachedResponse);
+    }
 
     return modifiedResponse;
   } catch (error) {
