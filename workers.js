@@ -3,7 +3,7 @@
 //引用广告相关逻辑
 import { AD_CODE } from './ads.js';
 //引用替换公告相关逻辑
-import { modifyNoticeResponse } from './notice-modifier.js';
+import { getCustomNoticeResponse } from './notice-modifier.js';
 
 const TARGET_HOST = 'https://fandorabox.net';
 const TARGET_DOMAIN = new URL(TARGET_HOST).hostname;
@@ -28,7 +28,12 @@ async function handleRequest(request) {
       );
     }
 
-    // 构造反向代理请求
+    // 激进办法：直接拦截 /api/notice，返回自定义公告（不访问原站）
+    if (url.pathname === '/api/notice') {
+      return getCustomNoticeResponse();
+    }
+
+    // 构造反向代理请求（其他路径）
     const targetUrl = TARGET_HOST + url.pathname + url.search;
     const newRequest = new Request(targetUrl, {
       method: request.method,
@@ -45,11 +50,6 @@ async function handleRequest(request) {
 
     // 发起请求
     let response = await fetch(newRequest);
-
-    // 对 /api/notice 的 JSON 响应进行替换（使用独立模块）
-    if (url.pathname === '/api/notice') {
-      response = await modifyNoticeResponse(response);
-    }
 
     // 广告插入（仅 HTML）
     const contentType = response.headers.get('Content-Type') || '';
