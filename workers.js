@@ -1,4 +1,4 @@
-//反向代理目标域名
+// 反向代理目标域名
 const TARGET_HOST = 'https://fandorabox.net';
 const TARGET_DOMAIN = new URL(TARGET_HOST).hostname;
 
@@ -9,6 +9,18 @@ addEventListener('fetch', event => {
 async function handleRequest(request) {
   try {
     const url = new URL(request.url);
+
+    // 特殊处理 ads.txt 请求
+    if (url.pathname === '/ads.txt') {
+      return new Response(
+        'google.com, pub-4002076249242835, DIRECT, f08c47fec0942fa0',
+        {
+          status: 200,
+          headers: { 'Content-Type': 'text/plain' }
+        }
+      );
+    }
+
     const targetUrl = TARGET_HOST + url.pathname + url.search;
 
     // 创建新请求，保留原方法、body 和大部分头
