@@ -9,6 +9,7 @@ import { handleListAllCache } from './custom-handlers.js';
 //导入离线暂存相关逻辑
 import { handleOfflineRequest, syncToOriginalServer } from './offline-handler.js';
 
+
 const TARGET_HOST = 'https://fandorabox.net';
 const TARGET_DOMAIN = new URL(TARGET_HOST).hostname;
 const PROXY_DOMAIN = 'fandorabox.tzhd427.dpdns.org';
@@ -20,7 +21,7 @@ const OFFLINE_MODE = globalThis.OFFLINE_MODE === 'true';
 const USER_DATA = globalThis.USER_DATA;
 const SESSIONS = globalThis.SESSIONS;
 const PENDING_SCORES = globalThis.PENDING_SCORES;
-const PENDING_REQUESTS = globalThis.PENDING_REQUESTS; // 新增
+const PENDING_REQUESTS = globalThis.PENDING_REQUESTS;
 
 const bindings = {
   OFFLINE_MODE,
@@ -34,7 +35,7 @@ addEventListener('fetch', event => {
   event.respondWith(handleRequest(event.request, event));
 });
 
-// 定时触发器
+// 定时触发器（每30分钟）
 addEventListener('scheduled', event => {
   event.waitUntil(syncToOriginalServer(bindings));
 });
@@ -42,6 +43,23 @@ addEventListener('scheduled', event => {
 async function handleRequest(request, event) {
   try {
     const url = new URL(request.url);
+
+    // ===== 新增：手动同步端点（公开，任何人都可触发）=====
+    if (url.pathname === '/api/manual-sync') {
+      // 立即执行同步（可能耗时，直接等待）
+      try {
+        await syncToOriginalServer(bindings);
+        return new Response(JSON.stringify({ success: true, message: '同步完成' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        return new Response(JSON.stringify({ success: false, error: error.message }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
 
     // 离线模式处理（传入 event 用于 waitUntil）
     if (OFFLINE_MODE) {
