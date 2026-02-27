@@ -15,36 +15,37 @@ const PROXY_DOMAIN = 'fandorabox.tzhd427.dpdns.org';
 const CACHE_TTL = 86400; // 24小时
 const cache = caches.default;
 
-// 从全局获取绑定的 KV 和变量（Service Worker 格式）
-const OFFLINE_MODE = globalThis.OFFLINE_MODE === 'true'; // 布尔值
+// 从全局获取绑定的 KV 和变量
+const OFFLINE_MODE = globalThis.OFFLINE_MODE === 'true';
 const USER_DATA = globalThis.USER_DATA;
 const SESSIONS = globalThis.SESSIONS;
 const PENDING_SCORES = globalThis.PENDING_SCORES;
+const PENDING_REQUESTS = globalThis.PENDING_REQUESTS; // 新增
 
-// 准备传递给离线模块的绑定对象
 const bindings = {
   OFFLINE_MODE,
   USER_DATA,
   SESSIONS,
-  PENDING_SCORES
+  PENDING_SCORES,
+  PENDING_REQUESTS
 };
 
 addEventListener('fetch', event => {
-  event.respondWith(handleRequest(event.request));
+  event.respondWith(handleRequest(event.request, event));
 });
 
-// 定时触发器（需在 wrangler.toml 中配置）
+// 定时触发器
 addEventListener('scheduled', event => {
   event.waitUntil(syncToOriginalServer(bindings));
 });
 
-async function handleRequest(request) {
+async function handleRequest(request, event) {
   try {
     const url = new URL(request.url);
 
-    // 离线模式处理
+    // 离线模式处理（传入 event 用于 waitUntil）
     if (OFFLINE_MODE) {
-      const offlineResponse = await handleOfflineRequest(request, bindings);
+      const offlineResponse = await handleOfflineRequest(request, bindings, event);
       if (offlineResponse) return offlineResponse;
     }
 
@@ -60,10 +61,11 @@ async function handleRequest(request) {
       return getCustomNoticeResponse();
     }
 
+    // 曲目列表缓存
     const listAllResponse = await handleListAllCache(request, TARGET_HOST);
     if (listAllResponse) return listAllResponse;
 
-    // 根路径缓存处理
+    // 根路径缓存
     if (url.pathname === '/' && request.method === 'GET') {
       const cacheKey = new Request(TARGET_HOST + '/', { method: 'GET' });
       const cachedResponse = await cache.match(cacheKey);
@@ -99,7 +101,7 @@ async function handleRequest(request) {
 
     const modifiedResponse = new Response(response.body, response);
 
-    // 处理 Set-Cookie：移除 Domain 限制
+    // 处理 Set-Cookie
     const cookies = [];
     modifiedResponse.headers.forEach((value, key) => {
       if (key.toLowerCase() === 'set-cookie') {
@@ -114,7 +116,7 @@ async function handleRequest(request) {
       });
     }
 
-    // 处理重定向 Location（域名替换）
+    // 处理重定向 Location
     const location = modifiedResponse.headers.get('Location');
     if (location) {
       try {
@@ -129,7 +131,7 @@ async function handleRequest(request) {
       } catch (e) {}
     }
 
-    // 删除 CSP 并添加 CORS 头
+    // 删除 CSP，添加 CORS
     modifiedResponse.headers.delete('Content-Security-Policy');
     modifiedResponse.headers.delete('Content-Security-Policy-Report-Only');
     modifiedResponse.headers.set('Access-Control-Allow-Origin', '*');
