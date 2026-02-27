@@ -22,8 +22,9 @@ crons = ["0 */6 * * *"]  # 每6小时尝试同步一次
 
 
 [observability]
-enabled = true
-head_sampling_rate = 1
 [observability.logs]
 enabled = true
 invocation_logs = true
+
+[observability.traces]
+enabled = true
