@@ -22,7 +22,7 @@ binding = "PENDING_REQUESTS"
 id = "e63172db90bd4389bf472812c196e623"   # 替换为实际 ID
 
 [triggers]
-crons = ["0 */6 * * *"]  # 每6小时尝试同步一次
+crons = ["*/30 * * * *"]  # 每30分钟尝试同步一次
 
 
 [observability]
