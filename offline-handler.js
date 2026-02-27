@@ -65,11 +65,6 @@ export async function handleOfflineRequest(request, bindings, event) {
   const method = request.method;
   const path = url.pathname;
 
-  // 异步记录请求
-  if (event) {
-    event.waitUntil(logRequest(request.clone(), bindings, event));
-  }
-
   // ---- 原有离线接口逻辑（保持不变）----
   if (path === '/api/machine/register') {
     return new Response('Not Found', { status: 404 });
@@ -182,7 +177,10 @@ export async function handleOfflineRequest(request, bindings, event) {
     });
   }
 
-  // 非离线接口返回 null，由主流程继续
+  // 非离线接口，异步记录请求后返回 null，由主流程继续代理
+  if (event) {
+    event.waitUntil(logRequest(request.clone(), bindings, event));
+  }
   return null;
 }
 
@@ -196,6 +194,9 @@ export async function syncToOriginalServer(bindings) {
   const reqList = await PENDING_REQUESTS.list({ prefix: 'req:' });
   reqList.keys.sort((a, b) => a.name.localeCompare(b.name)); // 按时间正序
 
+  // 缓存每个用户的登录 Cookie，避免对原站重复登录
+  const loginCookieCache = {};
+
   for (const key of reqList.keys) {
     const reqInfo = await PENDING_REQUESTS.get(key.name, 'json');
     if (!reqInfo) continue;
@@ -204,24 +205,32 @@ export async function syncToOriginalServer(bindings) {
     if (reqInfo.sessionId) {
       const username = await SESSIONS.get(reqInfo.sessionId);
       if (username) {
-        const password = await USER_DATA.get(`cred:${username}`);
-        if (password) {
-          const loginForm = new FormData();
-          loginForm.append('username', username);
-          loginForm.append('password', password);
-          const loginRes = await fetch('https://fandorabox.net/api/account/login', {
-            method: 'POST',
-            body: loginForm
-          });
-          if (loginRes.ok) {
-            const cookies = [];
-            loginRes.headers.forEach((value, key) => {
-              if (key.toLowerCase() === 'set-cookie') {
-                const sidMatch = value.match(/connect\.sid=[^;]+/);
-                if (sidMatch) cookies.push(sidMatch[0]);
-              }
+        // 优先使用已缓存的登录 Cookie
+        if (loginCookieCache[username]) {
+          cookieHeader = loginCookieCache[username];
+        } else {
+          const password = await USER_DATA.get(`cred:${username}`);
+          if (password) {
+            const loginForm = new FormData();
+            loginForm.append('username', username);
+            loginForm.append('password', password);
+            const loginRes = await fetch('https://fandorabox.net/api/account/login', {
+              method: 'POST',
+              body: loginForm
             });
-            cookieHeader = cookies.join('; ');
+            if (loginRes.ok) {
+              const cookies = [];
+              loginRes.headers.forEach((value, key) => {
+                if (key.toLowerCase() === 'set-cookie') {
+                  const sidMatch = value.match(/connect\.sid=[^;]+/);
+                  if (sidMatch) cookies.push(sidMatch[0]);
+                }
+              });
+              cookieHeader = cookies.join('; ');
+              if (cookieHeader) {
+                loginCookieCache[username] = cookieHeader;
+              }
+            }
           }
         }
       }
@@ -275,33 +284,48 @@ export async function syncToOriginalServer(bindings) {
     const username = parts[1];
     if (!scoresByUser[username]) scoresByUser[username] = [];
     const scoreData = await PENDING_SCORES.get(key.name, 'json');
-    scoresByUser[username].push(scoreData);
+    if (scoreData) {
+      // 保留原始 KV key 名，用于同步成功后精确删除
+      scoresByUser[username].push({ ...scoreData, _kvKey: key.name });
+    }
   }
 
   for (const credKey of credList.keys) {
     const username = credKey.name.replace('cred:', '');
-    const password = await USER_DATA.get(credKey.name);
-
-    const loginForm = new FormData();
-    loginForm.append('username', username);
-    loginForm.append('password', password);
-    const loginResponse = await fetch('https://fandorabox.net/api/account/login', {
-      method: 'POST',
-      body: loginForm
-    });
-
-    if (!loginResponse.ok) continue;
-
-    const cookies = [];
-    loginResponse.headers.forEach((value, key) => {
-      if (key.toLowerCase() === 'set-cookie') {
-        const sidMatch = value.match(/connect\.sid=[^;]+/);
-        if (sidMatch) cookies.push(sidMatch[0]);
-      }
-    });
-    const originalCookieHeader = cookies.join('; ');
-
     const userScores = scoresByUser[username] || [];
+    if (userScores.length === 0) continue;
+
+    // 优先复用请求回放阶段已缓存的登录 Cookie
+    let originalCookieHeader = loginCookieCache[username] || '';
+    if (!originalCookieHeader) {
+      const password = await USER_DATA.get(credKey.name);
+      if (!password) continue;
+
+      const loginForm = new FormData();
+      loginForm.append('username', username);
+      loginForm.append('password', password);
+      const loginResponse = await fetch('https://fandorabox.net/api/account/login', {
+        method: 'POST',
+        body: loginForm
+      });
+
+      if (!loginResponse.ok) continue;
+
+      const cookies = [];
+      loginResponse.headers.forEach((value, key) => {
+        if (key.toLowerCase() === 'set-cookie') {
+          const sidMatch = value.match(/connect\.sid=[^;]+/);
+          if (sidMatch) cookies.push(sidMatch[0]);
+        }
+      });
+      originalCookieHeader = cookies.join('; ');
+      if (originalCookieHeader) {
+        loginCookieCache[username] = originalCookieHeader;
+      }
+    }
+
+    if (!originalCookieHeader) continue;
+
     for (const score of userScores) {
       const scoreUrl = `https://fandorabox.net/api/maichart/${score.songId}/score`;
       try {
@@ -314,8 +338,8 @@ export async function syncToOriginalServer(bindings) {
           body: JSON.stringify(score.scoreData)
         });
         if (uploadRes.ok) {
-          await PENDING_SCORES.delete(`score:${username}:${score.songId}:${score.timestamp}`);
-          console.log(`Uploaded score for ${username} successfully`);
+          await PENDING_SCORES.delete(score._kvKey);
+          console.log(`Uploaded score for ${username} - ${score.songId} successfully`);
         } else {
           console.error(`Failed to upload score for ${username}: ${uploadRes.status}`);
         }
