@@ -143,7 +143,7 @@ crons = ["0 */6 * * *"]
 正常代理模式
 
 · 设置 OFFLINE_MODE = "false"。
-· 访问 https://fandorabox.tzhd427.dpdns.org 即可浏览原站内容，页面底部将显示广告。
+· 访问 你的网站 即可浏览原站内容，页面底部将显示广告。
 · 公告将显示您在 notice-modifier.js 中定义的内容。
 · 曲目列表接口 /api/maichart/list.all 每天更新一次。
 · 根路径 / 每天更新一次。
