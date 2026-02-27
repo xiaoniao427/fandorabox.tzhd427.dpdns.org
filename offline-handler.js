@@ -98,7 +98,8 @@ export async function handleOfflineRequest(request, bindings) {
     const scoreData = await request.json();
 
     const ts = Date.now();
-    const scoreKey = `score:${username}:${songId}:${ts}`;
+    const suffix = Math.random().toString(36).slice(2, 8);
+    const scoreKey = `score:${username}:${songId}:${ts}:${suffix}`;
     await PENDING_SCORES.put(scoreKey, JSON.stringify({
       songId,
       username,
@@ -209,16 +210,20 @@ export async function syncToOriginalServer(bindings) {
 
       // 仅在上传成功时清理暂存数据
       if (uploadOk) {
-        if (score._kvKey) {
-          await PENDING_SCORES.delete(score._kvKey);
-        } else {
-          // 兼容旧记录：尝试 keyTimestamp 和 timestamp 两种格式
-          if (score.keyTimestamp) {
-            await PENDING_SCORES.delete(`score:${username}:${score.songId}:${score.keyTimestamp}`);
+        try {
+          if (score._kvKey) {
+            await PENDING_SCORES.delete(score._kvKey);
+          } else {
+            // 兼容旧记录：尝试 keyTimestamp 和 timestamp 两种格式
+            if (score.keyTimestamp) {
+              await PENDING_SCORES.delete(`score:${username}:${score.songId}:${score.keyTimestamp}`);
+            }
+            if (score.timestamp) {
+              await PENDING_SCORES.delete(`score:${username}:${score.songId}:${score.timestamp}`);
+            }
           }
-          if (score.timestamp) {
-            await PENDING_SCORES.delete(`score:${username}:${score.songId}:${score.timestamp}`);
-          }
+        } catch (delErr) {
+          console.error(`删除暂存记录失败: ${score._kvKey || score.songId}`, delErr);
         }
       }
     }

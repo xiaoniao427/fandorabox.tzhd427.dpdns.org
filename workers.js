@@ -32,8 +32,9 @@ export default {
 
   // 定时触发器（需在 wrangler.toml 中配置）
   async scheduled(event, env, ctx) {
-    if (env.OFFLINE_MODE !== 'true') return;
-    await syncToOriginalServer(buildBindings(env));
+    const bindings = buildBindings(env);
+    if (!bindings.OFFLINE_MODE) return;
+    await syncToOriginalServer(bindings);
   }
 };
 
