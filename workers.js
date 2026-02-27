@@ -7,6 +7,7 @@ const AD_CODE = `
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4002076249242835"
      crossorigin="anonymous"></script>
 <!-- 页内正方形广告 -->
+<!-- 这个广告是代理站作者加的，和原作者没关系，要骂就骂我 -->
 <ins class="adsbygoogle"
      style="display:block"
      data-ad-client="ca-pub-4002076249242835"
