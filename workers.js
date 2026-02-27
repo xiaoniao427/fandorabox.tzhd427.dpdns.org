@@ -15,27 +15,40 @@ const PROXY_DOMAIN = 'fandorabox.tzhd427.dpdns.org';
 const CACHE_TTL = 86400; // 24小时
 const cache = caches.default;
 
+// 从全局获取绑定的 KV 和变量（Service Worker 格式）
+const OFFLINE_MODE = globalThis.OFFLINE_MODE === 'false'; // 布尔值
+const USER_DATA = globalThis.USER_DATA;
+const SESSIONS = globalThis.SESSIONS;
+const PENDING_SCORES = globalThis.PENDING_SCORES;
+
+// 准备传递给离线模块的绑定对象
+const bindings = {
+  OFFLINE_MODE,
+  USER_DATA,
+  SESSIONS,
+  PENDING_SCORES
+};
+
 addEventListener('fetch', event => {
-  event.respondWith(handleRequest(event.request, event));
+  event.respondWith(handleRequest(event.request));
 });
 
-// 定时触发器（需要配置 wrangler.toml 中的 triggers）
+// 定时触发器（需在 wrangler.toml 中配置）
 addEventListener('scheduled', event => {
-  event.waitUntil(syncToOriginalServer(event.env));
+  event.waitUntil(syncToOriginalServer(bindings));
 });
 
-async function handleRequest(request, event) {
+async function handleRequest(request) {
   try {
     const url = new URL(request.url);
-    const env = event.env; // 通过事件获取环境变量
 
-    // 离线模式检查：如果 OFFLINE_MODE 为 true，优先尝试离线处理
-    if (env.OFFLINE_MODE === 'true') {
-      const offlineResponse = await handleOfflineRequest(request, env);
+    // 离线模式处理
+    if (OFFLINE_MODE) {
+      const offlineResponse = await handleOfflineRequest(request, bindings);
       if (offlineResponse) return offlineResponse;
     }
 
-    // 特殊路径处理（这些路径在离线模式下可能已被拦截，但正常模式仍需处理）
+    // 特殊路径处理
     if (url.pathname === '/ads.txt') {
       return new Response(
         'google.com, pub-4002076249242835, DIRECT, f08c47fec0942fa0',
@@ -77,15 +90,49 @@ async function handleRequest(request, event) {
     const contentType = response.headers.get('Content-Type') || '';
     if (contentType.includes('text/html')) {
       const rewriter = new HTMLRewriter().on('main', {
-        element(element) { element.after(AD_CODE, { html: true }); }
+        element(element) {
+          element.after(AD_CODE, { html: true });
+        }
       });
       response = rewriter.transform(response);
     }
 
     const modifiedResponse = new Response(response.body, response);
 
-    // 处理 Set-Cookie、Location、CSP（代码保持不变，省略以节省空间）
-    // ...（此处粘贴原有的 Cookie、Location、CSP 处理逻辑）
+    // 处理 Set-Cookie：移除 Domain 限制
+    const cookies = [];
+    modifiedResponse.headers.forEach((value, key) => {
+      if (key.toLowerCase() === 'set-cookie') {
+        cookies.push(value);
+      }
+    });
+    if (cookies.length) {
+      modifiedResponse.headers.delete('Set-Cookie');
+      cookies.forEach(cookie => {
+        let newCookie = cookie.replace(/;?\s*Domain=[^;]*/i, '');
+        modifiedResponse.headers.append('Set-Cookie', newCookie);
+      });
+    }
+
+    // 处理重定向 Location（域名替换）
+    const location = modifiedResponse.headers.get('Location');
+    if (location) {
+      try {
+        const locationUrl = new URL(location, TARGET_HOST);
+        if (locationUrl.hostname === TARGET_DOMAIN) {
+          const workerUrl = new URL(request.url);
+          workerUrl.hostname = PROXY_DOMAIN;
+          workerUrl.pathname = locationUrl.pathname;
+          workerUrl.search = locationUrl.search;
+          modifiedResponse.headers.set('Location', workerUrl.toString());
+        }
+      } catch (e) {}
+    }
+
+    // 删除 CSP 并添加 CORS 头
+    modifiedResponse.headers.delete('Content-Security-Policy');
+    modifiedResponse.headers.delete('Content-Security-Policy-Report-Only');
+    modifiedResponse.headers.set('Access-Control-Allow-Origin', '*');
 
     // 根路径缓存存储
     if (url.pathname === '/' && request.method === 'GET' && modifiedResponse.status === 200) {
