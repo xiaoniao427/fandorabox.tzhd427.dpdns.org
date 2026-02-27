@@ -4,9 +4,9 @@
 import { AD_CODE } from './ads.js';
 //导入自定义公告相关逻辑
 import { getCustomNoticeResponse } from './notice-modifier.js';
-//导入谱面列表
-import { handleListAllCache } from './custom-handlers.js';
 //导入缓存相关逻辑
+import { handleListAllCache } from './custom-handlers.js';
+//导入离线暂存相关逻辑
 import { handleOfflineRequest, syncToOriginalServer } from './offline-handler.js';
 
 const TARGET_HOST = 'https://fandorabox.net';
