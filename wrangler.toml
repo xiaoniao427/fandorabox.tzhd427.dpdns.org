@@ -1,39 +1,37 @@
 name = "fandorabox"
-main = "workers.js"
+main = "workers.js" #主要入口，不要动
 compatibility_date = "2026-02-26"
 
+# 变量
 [vars]
-OFFLINE_MODE = "false"  # 设为 "true" 启用离线模拟（测试用，平时保持关闭）
-SYNC_PASSWORD = "your-secure-password"   # 替换为实际密码
+OFFLINE_MODE = "false"  # 设为 "true" 启用离线模拟（测试用，生产环境不要启用）
+SYNC_PASSWORD = "your-secure-password"   # 替换为实际密码（不要直接在仓库里填，同步到cloudflare_worker后在worker里填）
 
+# KV绑定
 [[kv_namespaces]]
 binding = "USER_DATA"
-id = "abd11477aaf045ae91b3577a3d879712"
+id = "abd11477aaf045ae91b3577a3d879712"   # fork后替换为自己的ID
 
 [[kv_namespaces]]
 binding = "SESSIONS"
-id = "d96787ddbe764df79cdccdd0b4535032"
+id = "d96787ddbe764df79cdccdd0b4535032"   # fork后替换为自己的ID
 
 [[kv_namespaces]]
 binding = "PENDING_SCORES"
-id = "60e1434d441e4268a57912b052985e6f"
-
-[[kv_namespaces]]
-binding = "PENDING_REQUESTS"
-id = "e63172db90bd4389bf472812c196e623" # 替换为实际 ID
+id = "60e1434d441e4268a57912b052985e6f"   # fork后替换为自己的ID
 
 [[kv_namespaces]]
 binding = "LIST_CACHE"
-id = "13ab91db113e4b24b985dc6aee166810"   # 替换为实际 ID
+id = "13ab91db113e4b24b985dc6aee166810"   # fork后替换为自己的ID
 
 [triggers]
-crons = ["*/30 * * * *"]  # 每30分钟尝试同步一次
+crons = ["*/30 * * * *"]  # 每30分钟尝试同步一次（可修改，不建议频率调太短或太长，太短会导致原站负载增加，太长会导致CPU时钟超过免费用量自动终止）
 
-
+# 下面这些都是日志有关的，生产环境用不上
 [observability]
 [observability.logs]
-enabled = true
-invocation_logs = true
+enabled = false
+invocation_logs = false
 
 [observability.traces]
-enabled = true
+enabled = false
