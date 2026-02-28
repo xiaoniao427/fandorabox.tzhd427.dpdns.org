@@ -21,7 +21,7 @@
   通过环境变量 `OFFLINE_MODE` 控制，当设为 `true` 时，模拟原站离线状态，对特定 API 返回预设响应，并利用 KV 存储用户会话、暂存成绩，待原站恢复后自动同步。
 
 - **API 数据暂存**  
-  对 `/api/maichart/list.all` 使用 KV 持久化存储，每日尝试更新一次。当源站离线时，自动返回最后一次成功获取的缓存数据。
+  对 `/api/maichart/list.all` 使用 GitHub工作流 同步文件，每日尝试更新一次。当源站离线时，自动返回最后一次成功获取的缓存数据。
 
 - **根页面缓存**  
   对根路径 `/` 进行每日缓存（使用 Cache API），提升访问速度。
@@ -49,11 +49,10 @@
 ## 部署前准备
 
 1. **Cloudflare 账户** 并已启用 Workers。
-2. **创建四个 KV 命名空间**：
+2. **创建三个 KV 命名空间**：
    - `USER_DATA`：存储离线登录时的用户加密密码。
    - `SESSIONS`：存储离线会话映射。
    - `PENDING_SCORES`：暂存用户上传的成绩。
-   - `LIST_CACHE`：暂存曲目列表数据。
 3. **准备您的广告代码**（可选）：修改 `ads.js` 中的 `AD_CODE` 常量。
 4. **准备自定义公告内容**（可选）：修改 `notice-modifier.js` 中的 `CUSTOM_NOTICE_CONTENT` 变量。
 5. **设置原站地址**：确定要代理的目标网站（例如 `https://fandorabox.net`）。
@@ -87,10 +86,6 @@ id = "your_sessions_kv_id"
 [[kv_namespaces]]
 binding = "PENDING_SCORES"
 id = "your_pending_scores_kv_id"
-
-[[kv_namespaces]]
-binding = "LIST_CACHE"
-id = "your_list_cache_kv_id"
 ```
 
 ### 定时触发器（用于自动同步）
@@ -108,8 +103,10 @@ crons = ["*/30 * * * *"]   # 每30分钟触发一次同步
 ├── worker.js              # 主程序入口
 ├── ads.js                 # 广告代码模块
 ├── notice-modifier.js     # 公告替换模块
-├── custom-handlers.js     # 曲目列表暂存处理器
+├── custom-handlers.js     # 铺面列表处理模块（从 songs-data.js 导入数据）
 ├── offline-handler.js     # 离线模拟与成绩上传模块
+├── songs-data.js          # 铺面列表静态数据（由 GitHub Actions 自动更新）
+├── .github/workflows/update-songs.yml  # GitHub Actions 自动更新工作流
 └── README.md              # 本文档
 ```
 
@@ -159,10 +156,6 @@ id = "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
 binding = "PENDING_SCORES"
 id = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
 
-[[kv_namespaces]]
-binding = "LIST_CACHE"
-id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-
 [vars]
 ORIGIN_HOST = "https://fandorabox.net"
 OFFLINE_MODE = "false"
@@ -207,17 +200,37 @@ curl "https://your-proxy-domain/api/manual-sync?password=你的密码"
 
 ---
 
+## GitHub Actions 自动更新铺面列表
+
+项目包含一个 GitHub Actions 工作流文件 .github/workflows/update-songs.yml，它会：
+
+- 定时触发：每天 UTC 0:00（北京时间 8:00）运行一次。
+- 手动触发：可通过 GitHub 界面手动运行。
+- 从原站获取最新数据：请求 ORIGIN_HOST/api/maichart/list.all，保存为 JSON。
+- 更新 songs-data.js：将获取的数据写入 songs-data.js 文件中的 SONGS_LIST 常量。
+- 提交并推送：如果有变化，自动提交并推送到仓库。
+- 触发 Cloudflare 重新部署：由于 Cloudflare 与 GitHub 集成，推送后会自动拉取新代码并部署，使铺面列表保持最新。
+
+### 注意事项
+
+- 确保 GitHub 仓库中已设置 Secrets ORIGIN_HOST（否则使用默认值 https://fandorabox.net）。
+- songs-data.js 初始内容应为 export const SONGS_LIST = { "songs": [] };。
+- 工作流会完全覆盖 songs-data.js，因此该文件不应包含其他代码。
+
+---
+
 ## 注意事项
 
-1. **原站地址配置**：必须正确设置 `ORIGIN_HOST` 环境变量，否则 Worker 无法工作。
-2. **KV 计费**：离线模式会频繁读写 KV，请注意免费层用量限制。
-3. **密码安全**：`SYNC_PASSWORD` 请使用强密码，避免未授权访问手动同步接口。
-4. **健康检查**：自动同步和缓存更新通过 HEAD 请求原站首页判断源站在线，请确保原站首页可访问。
-5. **广告代码**：`ads.js` 中的广告单元 ID 需替换为您自己的 Google AdSense 代码。
-6. **公告文本**：`notice-modifier.js` 中的 `CUSTOM_NOTICE_CONTENT` 变量可按需修改。
-7. **缓存时间**：根路径和曲目列表的缓存时间均为 86400 秒（1天），可根据需要调整 `CACHE_TTL` 常量。
-8. **域名替换**：Worker 会自动将响应内容中的原站域名替换为您的代理域名，确保站内链接正确。
-9. **超时限制**：如果暂存成绩量很大，手动同步可能超过 Worker 的 CPU 时间限制（免费套餐 10ms，付费套餐 30 秒）。可考虑升级套餐或分批处理。
+1. 原站地址配置：必须正确设置 ORIGIN_HOST 环境变量，否则 Worker 无法工作。
+2. KV 计费：离线模式会频繁读写 KV，请注意免费层用量限制。
+3. 密码安全：SYNC_PASSWORD 请使用强密码，并通过环境变量设置，避免泄露。
+4. 健康检查：自动同步和缓存更新通过 HEAD 请求原站首页判断源站在线，请确保原站首页可访问。
+5. 广告代码：ads.js 中的广告单元 ID 需替换为您自己的 Google AdSense 代码。
+6. 公告文本：notice-modifier.js 中的 CUSTOM_NOTICE_CONTENT 变量可按需修改。
+7. 缓存时间：根路径缓存时间默认为 86400 秒（1天），可根据需要调整 worker.js 中的 CACHE_TTL 常量。
+8. 域名替换：Worker 会自动将响应内容中的原站域名替换为您的代理域名，确保站内链接正确。
+9. 超时限制：如果暂存成绩量很大，手动同步可能超过 Worker 的 CPU 时间限制（免费套餐 10ms，付费套餐 30 秒）。可考虑升级套餐或分批处理。
+10. GitHub Actions 权限：工作流需要 contents: write 权限，已在配置中声明，确保仓库设置允许 Actions 创建提交。
 
 ---
 
