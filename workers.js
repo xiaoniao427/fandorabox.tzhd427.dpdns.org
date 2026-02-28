@@ -9,7 +9,6 @@ import { handleListAllCache } from './custom-handlers.js';
 //导入离线暂存相关逻辑
 import { handleOfflineRequest, syncToOriginalServer } from './offline-handler.js';
 
-const LIST_CACHE = globalThis.LIST_CACHE;
 const TARGET_HOST = 'https://fandorabox.net';
 const TARGET_DOMAIN = new URL(TARGET_HOST).hostname;
 const PROXY_DOMAIN = 'fandorabox.tzhd427.dpdns.org';
@@ -18,18 +17,18 @@ const cache = caches.default;
 
 // 从全局获取绑定的 KV 和变量
 const OFFLINE_MODE = globalThis.OFFLINE_MODE === 'true';
-const SYNC_PASSWORD = globalThis.SYNC_PASSWORD; // 新增：手动同步密码
+const SYNC_PASSWORD = globalThis.SYNC_PASSWORD;
 const USER_DATA = globalThis.USER_DATA;
 const SESSIONS = globalThis.SESSIONS;
 const PENDING_SCORES = globalThis.PENDING_SCORES;
-const PENDING_REQUESTS = globalThis.PENDING_REQUESTS;
+// 注意：PENDING_REQUESTS 已彻底移除，不再使用
+const LIST_CACHE = globalThis.LIST_CACHE;
 
 const bindings = {
   OFFLINE_MODE,
   USER_DATA,
   SESSIONS,
   PENDING_SCORES,
-  PENDING_REQUESTS,
   LIST_CACHE
 };
 
@@ -46,16 +45,14 @@ async function handleRequest(request, event) {
   try {
     const url = new URL(request.url);
 
-    // ===== 手动同步端点（需密码鉴权）=====
+    // 手动同步端点（需密码鉴权）
     if (url.pathname === '/api/manual-sync') {
-      // 检查密码是否配置
       if (!SYNC_PASSWORD) {
         return new Response(JSON.stringify({ success: false, error: 'Sync password not configured' }), {
           status: 500,
           headers: { 'Content-Type': 'application/json' }
         });
       }
-      // 获取查询参数中的密码
       const password = url.searchParams.get('password');
       if (password !== SYNC_PASSWORD) {
         return new Response(JSON.stringify({ success: false, error: 'Forbidden' }), {
@@ -63,7 +60,6 @@ async function handleRequest(request, event) {
           headers: { 'Content-Type': 'application/json' }
         });
       }
-      // 执行同步（可能耗时，直接等待）
       try {
         await syncToOriginalServer(bindings);
         return new Response(JSON.stringify({ success: true, message: '同步完成' }), {
@@ -78,9 +74,9 @@ async function handleRequest(request, event) {
       }
     }
 
-    // 离线模式处理（传入 event 用于 waitUntil）
+    // 离线模式处理（不再需要传入 event，因为已无异步记录）
     if (OFFLINE_MODE) {
-      const offlineResponse = await handleOfflineRequest(request, bindings, event);
+      const offlineResponse = await handleOfflineRequest(request, bindings);
       if (offlineResponse) return offlineResponse;
     }
 
@@ -96,8 +92,8 @@ async function handleRequest(request, event) {
       return getCustomNoticeResponse();
     }
 
-    // 曲目列表缓存
-    const listAllResponse = await handleListAllCache(request, TARGET_HOST);
+    // 曲目列表暂存
+    const listAllResponse = await handleListAllCache(request);
     if (listAllResponse) return listAllResponse;
 
     // 根路径缓存
