@@ -1,76 +1,11 @@
-// 辅助函数：提取请求信息
-async function extractRequestInfo(request) {
-  const url = new URL(request.url);
-  const headers = {};
-  const safeHeaders = ['cookie', 'content-type', 'user-agent', 'referer', 'origin'];
-  request.headers.forEach((value, key) => {
-    const lowerKey = key.toLowerCase();
-    if (safeHeaders.includes(lowerKey) || lowerKey.startsWith('x-')) {
-      headers[key] = value;
-    }
-  });
-
-  let body = null;
-  let bodyType = null;
-  if (request.method !== 'GET' && request.method !== 'HEAD') {
-    const clonedReq = request.clone();
-    const contentType = request.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-      body = await clonedReq.text();
-      bodyType = 'json';
-    } else if (contentType.includes('application/x-www-form-urlencoded')) {
-      body = await clonedReq.text();
-      bodyType = 'form';
-    } else {
-      try {
-        body = await clonedReq.text();
-        bodyType = 'text';
-      } catch {
-        // 忽略无法读取的 body
-      }
-    }
-  }
-
-  let sessionId = null;
-  const cookie = headers['cookie'] || '';
-  const match = cookie.match(/connect\.sid=([^;]+)/);
-  if (match) sessionId = match[1];
-
-  return {
-    method: request.method,
-    url: url.pathname + url.search,
-    headers,
-    body,
-    bodyType,
-    sessionId,
-    timestamp: Date.now()
-  };
-}
-
-// 记录请求到 KV（异步）
-async function logRequest(request, bindings, event) {
-  try {
-    const info = await extractRequestInfo(request);
-    const key = `req:${info.timestamp}:${Math.random().toString(36).substr(2, 8)}`;
-    await bindings.PENDING_REQUESTS.put(key, JSON.stringify(info));
-  } catch (e) {
-    console.error('Failed to log request:', e);
-  }
-}
-
-// 离线请求处理器（包含原有接口逻辑 + 请求记录）
-export async function handleOfflineRequest(request, bindings, event) {
-  const { USER_DATA, SESSIONS, PENDING_SCORES, PENDING_REQUESTS } = bindings;
+// 离线请求处理器（仅保留离线接口模拟）
+export async function handleOfflineRequest(request, bindings) {
+  const { USER_DATA, SESSIONS, PENDING_SCORES } = bindings;
   const url = new URL(request.url);
   const method = request.method;
   const path = url.pathname;
 
-  // 异步记录请求
-  if (event) {
-    event.waitUntil(logRequest(request.clone(), bindings, event));
-  }
-
-  // ---- 原有离线接口逻辑（保持不变）----
+  // ---- 离线接口模拟逻辑 ----
   if (path === '/api/machine/register') {
     return new Response('Not Found', { status: 404 });
   }
@@ -186,86 +121,12 @@ export async function handleOfflineRequest(request, bindings, event) {
   return null;
 }
 
-// 同步函数（每30分钟触发一次，不再检查原站在线状态）
+// 同步函数（仅成绩上传）
 export async function syncToOriginalServer(bindings) {
-  const { USER_DATA, SESSIONS, PENDING_SCORES, PENDING_REQUESTS } = bindings;
+  const { USER_DATA, SESSIONS, PENDING_SCORES } = bindings;
 
-  console.log('开始尝试同步数据（无论原站是否在线）...');
+  console.log('开始尝试同步成绩数据...');
 
-  // ---- 回放请求记录 ----
-  const reqList = await PENDING_REQUESTS.list({ prefix: 'req:' });
-  reqList.keys.sort((a, b) => a.name.localeCompare(b.name)); // 按时间正序
-
-  for (const key of reqList.keys) {
-    const reqInfo = await PENDING_REQUESTS.get(key.name, 'json');
-    if (!reqInfo) continue;
-
-    let cookieHeader = '';
-    if (reqInfo.sessionId) {
-      const username = await SESSIONS.get(reqInfo.sessionId);
-      if (username) {
-        const password = await USER_DATA.get(`cred:${username}`);
-        if (password) {
-          const loginForm = new FormData();
-          loginForm.append('username', username);
-          loginForm.append('password', password);
-          const loginRes = await fetch('https://fandorabox.net/api/account/login', {
-            method: 'POST',
-            body: loginForm
-          });
-          if (loginRes.ok) {
-            const cookies = [];
-            loginRes.headers.forEach((value, key) => {
-              if (key.toLowerCase() === 'set-cookie') {
-                const sidMatch = value.match(/connect\.sid=[^;]+/);
-                if (sidMatch) cookies.push(sidMatch[0]);
-              }
-            });
-            cookieHeader = cookies.join('; ');
-          }
-        }
-      }
-    }
-
-    const targetUrl = `https://fandorabox.net${reqInfo.url}`;
-    const headers = new Headers(reqInfo.headers || {});
-    if (cookieHeader) {
-      headers.set('Cookie', cookieHeader);
-    } else {
-      headers.delete('Cookie');
-    }
-    headers.delete('host');
-
-    const fetchOptions = {
-      method: reqInfo.method,
-      headers: headers
-    };
-
-    if (reqInfo.body && reqInfo.method !== 'GET' && reqInfo.method !== 'HEAD') {
-      fetchOptions.body = reqInfo.body;
-      if (!headers.has('content-type') && reqInfo.bodyType) {
-        if (reqInfo.bodyType === 'json') {
-          headers.set('content-type', 'application/json');
-        } else if (reqInfo.bodyType === 'form') {
-          headers.set('content-type', 'application/x-www-form-urlencoded');
-        }
-      }
-    }
-
-    try {
-      const response = await fetch(targetUrl, fetchOptions);
-      if (response.ok) {
-        await PENDING_REQUESTS.delete(key.name);
-        console.log(`Replayed request ${key.name} successfully`);
-      } else {
-        console.error(`Failed to replay request ${key.name}: ${response.status}`);
-      }
-    } catch (e) {
-      console.error(`Error replaying request ${key.name}:`, e);
-    }
-  }
-
-  // ---- 原有的成绩同步逻辑 ----
   const credList = await USER_DATA.list({ prefix: 'cred:' });
   const pendingScoresList = await PENDING_SCORES.list({ prefix: 'score:' });
 
@@ -325,5 +186,5 @@ export async function syncToOriginalServer(bindings) {
     }
   }
 
-  console.log('同步尝试完成');
+  console.log('成绩同步尝试完成');
 }
