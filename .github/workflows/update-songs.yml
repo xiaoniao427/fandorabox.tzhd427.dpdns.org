@@ -2,14 +2,14 @@ name: Daily Update Songs List
 
 on:
   schedule:
-    - cron: '0 0 * * *'
-  workflow_dispatch:
+    - cron: '0 0 * * *'   # 每天 UTC 0:00 运行
+  workflow_dispatch:       # 允许手动触发
 
 jobs:
   update-songs:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write      # 需要推送代码权限
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,9 +26,9 @@ jobs:
 
       - name: Update songs-data.js
         run: |
-          SONGS_JSON=$(jq -c . songs.json)
-          # 替换 songs-data.js 中的 export const SONGS_LIST = ... 行
-          sed -i "s|^export const SONGS_LIST = .*;|export const SONGS_LIST = $SONGS_JSON;|" songs-data.js
+          # 将最新 JSON 写入 songs-data.js（覆盖整个文件）
+          echo "export const SONGS_LIST = $(jq -c . songs.json);" > songs-data.js
+          # 检查文件是否有变化，若无则退出（避免空提交）
           if git diff --quiet; then
             echo "No changes detected. Exiting."
             exit 0
