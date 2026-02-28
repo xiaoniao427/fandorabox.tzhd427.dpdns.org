@@ -76,7 +76,7 @@ export async function handleOfflineRequest(request, bindings) {
     });
   }
 
-  if (path.match(/^\/api\/maichart\/[^\/]+\/score$/) && method === 'POST') {
+if (path.match(/^\/api\/maichart\/[^\/]+\/score$/) && method === 'POST') {
     const cookie = request.headers.get('Cookie') || '';
     const match = cookie.match(/connect\.sid=([^;]+)/);
     if (!match) return new Response('Unauthorized', { status: 401 });
@@ -84,22 +84,22 @@ export async function handleOfflineRequest(request, bindings) {
     const username = await SESSIONS.get(sessionId);
     if (!username) return new Response('Unauthorized', { status: 401 });
 
-    const songId = path.split('/')[3];
-    const scoreData = await request.json();
-    const scoreKey = `score:${username}:${songId}:${Date.now()}`;
-    await PENDING_SCORES.put(scoreKey, JSON.stringify({
-      songId,
-      username,
-      scoreData,
-      timestamp: new Date().toISOString()
-    }));
+const songId = path.split('/')[3];
+  const scoreData = await request.json();
+  const timestamp = new Date().toISOString(); // 统一为 ISO 字符串
+  const scoreKey = `score:${username}:${songId}:${timestamp}`;
+  await PENDING_SCORES.put(scoreKey, JSON.stringify({
+    songId,
+    username,
+    scoreData,
+    timestamp  // 存储相同的 ISO 字符串
 
     return new Response(JSON.stringify({ ok: true }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-
+    status: 200,
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
+      
   if (path === '/api/account/logout' && method === 'POST') {
     const cookie = request.headers.get('Cookie') || '';
     const match = cookie.match(/connect\.sid=([^;]+)/);
