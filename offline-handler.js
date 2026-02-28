@@ -93,6 +93,7 @@ const songId = path.split('/')[3];
     username,
     scoreData,
     timestamp  // 存储相同的 ISO 字符串
+    }));
 
     return new Response(JSON.stringify({ ok: true }), {
     status: 200,
