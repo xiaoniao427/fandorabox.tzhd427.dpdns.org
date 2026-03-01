@@ -248,6 +248,9 @@ curl "https://your-proxy-domain/api/manual-sync?password=你的密码"
 - 在 `custom-handlers.js` 中添加其他 API 的缓存策略。
 - 在 `worker.js` 中调整广告插入位置（例如改为 `body` 或特定元素）。
 
+## 贡献代码
+如果你想贡献代码，请去dev分支提交，测试无bug后会同步到main。
+
 ---
 
 ## 许可证
