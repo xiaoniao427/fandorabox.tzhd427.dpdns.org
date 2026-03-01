@@ -15,26 +15,23 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Fetch latest songs list from origin
-        id: fetch
         run: |
           ORIGIN_HOST="${{ secrets.ORIGIN_HOST }}"
-          if [ -z "$ORIGIN_HOST" ]; then
-            ORIGIN_HOST="https://fandorabox.net"
-          fi
-          curl -s -f "$ORIGIN_HOST/api/maichart/list.all" -o songs.json || exit 1
-          echo "fetched=true" >> $GITHUB_OUTPUT
+          curl -s -f "${ORIGIN_HOST:-https://fandorabox.net}/api/maichart/list.all" -o songs.json
 
       - name: Update songs-data.js
+        id: update
         run: |
-          # 将最新 JSON 写入 songs-data.js（覆盖整个文件）
+          # 生成新内容
           echo "export const SONGS_LIST = $(jq -c . songs.json);" > songs-data.js
-          # 检查文件是否有变化，若无则退出（避免空提交）
-          if git diff --quiet; then
+          # 检查是否有变化
+          if git diff --quiet songs-data.js; then
             echo "No changes detected. Exiting."
             exit 0
           fi
 
       - name: Commit and push changes
+        if: steps.update.outcome == 'success'  # 仅当上一步成功且未退出时执行
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
