@@ -26,12 +26,14 @@ jobs:
           echo "export const SONGS_LIST = $(jq -c . songs.json);" > songs-data.js
           # 检查是否有变化
           if git diff --quiet songs-data.js; then
-            echo "No changes detected. Exiting."
-            exit 0
+            echo "No changes detected."
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
           fi
 
       - name: Commit and push changes
-        if: steps.update.outcome == 'success'  # 仅当上一步成功且未退出时执行
+        if: steps.update.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
