@@ -9,12 +9,9 @@ import { handleListAllCache } from './custom-handlers.js';
 //导入离线暂存相关逻辑
 import { handleOfflineRequest, syncToOriginalServer } from './offline-handler.js';
 
-const TARGET_HOST = globalThis.ORIGIN_HOST; // 从环境变量获取
-if (!TARGET_HOST) {
-  throw new Error('ORIGIN_HOST environment variable is not set');
-}
+const TARGET_HOST = globalThis.ORIGIN_HOST || 'https://fandorabox.net';
 const TARGET_DOMAIN = new URL(TARGET_HOST).hostname;
-const PROXY_DOMAIN = globalThis.PROXY_DOMAIN; // 您的代理域名，可从环境变量获取或硬编码
+const PROXY_DOMAIN = globalThis.PROXY_DOMAIN || new URL(TARGET_HOST).hostname; // 可选，用于替换响应中的域名
 const CACHE_TTL = 86400; // 24小时
 const cache = caches.default;
 
