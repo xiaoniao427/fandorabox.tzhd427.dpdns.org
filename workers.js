@@ -10,7 +10,8 @@ import { handleListAllCache } from './custom-handlers.js';
 import { handleOfflineRequest, syncToOriginalServer } from './offline-handler.js';
 //导入扫码登录相关逻辑
 import { handleAuthRequest } from './auth-handler.js';
-
+//导入授权登录前端页面相关逻辑
+import { renderAuthConfirmPage } from './auth-page.js';
 // 从环境变量获取配置
 let rawOrigin = globalThis.ORIGIN_HOST || 'https://fandorabox.net';
 if (!rawOrigin.startsWith('http://') && !rawOrigin.startsWith('https://')) {
@@ -54,6 +55,11 @@ addEventListener('scheduled', event => {
 async function handleRequest(request, event) {
   try {
     const url = new URL(request.url);
+
+    // ========== 处理前端确认页面 ==========
+    if (url.pathname === '/auth/confirm' && request.method === 'GET') {
+      return renderAuthConfirmPage();
+    }
 
     // ========== 处理扫码登录相关 API ==========
     const authResponse = await handleAuthRequest(request, bindings, FRONTEND_HOST);
