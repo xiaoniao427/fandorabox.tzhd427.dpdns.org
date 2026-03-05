@@ -1,5 +1,5 @@
 // auth-handler.js
-// 实现扫码登录 API（兼容大小写字段名）
+// 实现扫码登录 API（兼容大小写字段名，修复 token 映射 TTL 同步问题）
 
 // 工具函数：生成随机 ID
 function generateId() {
@@ -9,6 +9,19 @@ function generateId() {
 // 模拟获取客户端 IP
 function getClientIP(request) {
   return request.headers.get('CF-Connecting-IP') || '255.168.127.1';
+}
+
+/**
+ * 安全解析 JSON 请求体
+ * @param {Request} request - 原始请求对象
+ * @returns {Promise<Object|null>} 解析后的对象，失败返回 null
+ */
+async function safeParseJSON(request) {
+  try {
+    return await request.json();
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -26,7 +39,10 @@ export async function handleAuthRequest(request, bindings, frontendHost) {
 
   // ---------- 机器注册 POST /api/machine/registry 和 /api/machine/register ----------
   if ((path === '/api/machine/registry' || path === '/api/machine/register') && method === 'POST') {
-    const body = await request.json();
+    const body = await safeParseJSON(request);
+    if (!body) {
+      return new Response('Bad Request: invalid JSON', { status: 400 });
+    }
     // 兼容大小写字段名
     const name = body.Name || body.name;
     const description = body.Description || body.description;
@@ -77,6 +93,12 @@ export async function handleAuthRequest(request, bindings, frontendHost) {
       }
     }
 
+    // 更新机器最后活动时间
+    machine.lastActive = Date.now();
+    await MACHINE_SESSIONS.put(machineId, JSON.stringify(machine), { expirationTtl: 300 });
+    // 同步更新 token 映射 TTL
+    await MACHINE_SESSIONS.put(`token:${machineToken}`, machineId, { expirationTtl: 300 });
+
     const authId = generateId();
     const location = `${frontendHost}/auth/confirm?auth-id=${authId}`;
 
@@ -109,9 +131,10 @@ export async function handleAuthRequest(request, bindings, frontendHost) {
     const machine = await MACHINE_SESSIONS.get(auth.machineId, 'json');
     if (!machine) return new Response('Machine not found', { status: 404 });
 
-    // 更新机器最后活动时间
+    // 更新机器最后活动时间（此接口由前端调用，不携带机器 token，因此只更新机器主记录）
     machine.lastActive = Date.now();
     await MACHINE_SESSIONS.put(auth.machineId, JSON.stringify(machine), { expirationTtl: 300 });
+    // 注意：不更新 token 映射，因为前端请求不携带 machine-token
 
     const responseBody = {
       grantee: 'machine',
@@ -189,6 +212,8 @@ export async function handleAuthRequest(request, bindings, frontendHost) {
     if (machine) {
       machine.lastActive = Date.now();
       await MACHINE_SESSIONS.put(machineId, JSON.stringify(machine), { expirationTtl: 300 });
+      // 同步更新 token 映射 TTL
+      await MACHINE_SESSIONS.put(`token:${machineToken}`, machineId, { expirationTtl: 300 });
     }
 
     if (auth.status === 'pending') {
@@ -234,6 +259,16 @@ export async function handleAuthRequest(request, bindings, frontendHost) {
     // 删除授权会话及相关索引
     await OAUTH_SESSIONS.delete(authId);
     await OAUTH_SESSIONS.delete(`machine:${machineId}:${authId}`);
+
+    // 更新机器最后活动时间（吊销也是机器活动）
+    const machine = await MACHINE_SESSIONS.get(machineId, 'json');
+    if (machine) {
+      machine.lastActive = Date.now();
+      await MACHINE_SESSIONS.put(machineId, JSON.stringify(machine), { expirationTtl: 300 });
+      // 同步更新 token 映射 TTL
+      await MACHINE_SESSIONS.put(`token:${machineToken}`, machineId, { expirationTtl: 300 });
+    }
+
     return new Response(null, { status: 200 });
   }
 
