@@ -11,8 +11,60 @@ import { handleOfflineRequest, syncToOriginalServer } from './offline-handler.js
 //导入扫码登录相关逻辑
 import { handleAuthRequest } from './auth-handler.js';
 
-async function handleRequest(request, event) {
+export default {
+  async fetch(request, env, ctx) {
+    return handleRequest(request, env, ctx);
+  },
+  async scheduled(event, env, ctx) {
+    // scheduled 事件中需要调用同步函数
+    const bindings = {
+      USER_DATA: env.USER_DATA,
+      SESSIONS: env.SESSIONS,
+      PENDING_SCORES: env.PENDING_SCORES,
+      LIST_CACHE: env.LIST_CACHE,
+      MACHINE_SESSIONS: env.MACHINE_SESSIONS,
+      OAUTH_SESSIONS: env.OAUTH_SESSIONS,
+      OFFLINE_MODE: env.OFFLINE_MODE === 'true'
+    };
+    const TARGET_HOST = env.ORIGIN_HOST || 'https://fandorabox.net';
+    await syncToOriginalServer(bindings, TARGET_HOST);
+  }
+};
+
+async function handleRequest(request, env, ctx) {
   try {
+    // ========== 从环境变量获取配置 ==========
+    let rawOrigin = env.ORIGIN_HOST || 'https://fandorabox.net';
+    if (!rawOrigin.startsWith('http://') && !rawOrigin.startsWith('https://')) {
+      rawOrigin = 'https://' + rawOrigin;
+    }
+    const TARGET_HOST = rawOrigin;
+    const TARGET_DOMAIN = new URL(TARGET_HOST).hostname;
+    const PROXY_DOMAIN = env.PROXY_DOMAIN || TARGET_DOMAIN;
+    const FRONTEND_HOST = env.FRONTEND_HOST || 'https://your-frontend.com';
+    const CACHE_TTL = 86400;
+    const cache = caches.default;
+
+    // KV 绑定
+    const OFFLINE_MODE = env.OFFLINE_MODE === 'true';
+    const SYNC_PASSWORD = env.SYNC_PASSWORD;
+    const USER_DATA = env.USER_DATA;
+    const SESSIONS = env.SESSIONS;
+    const PENDING_SCORES = env.PENDING_SCORES;
+    const LIST_CACHE = env.LIST_CACHE;
+    const MACHINE_SESSIONS = env.MACHINE_SESSIONS;
+    const OAUTH_SESSIONS = env.OAUTH_SESSIONS;
+
+    const bindings = {
+      OFFLINE_MODE,
+      USER_DATA,
+      SESSIONS,
+      PENDING_SCORES,
+      LIST_CACHE,
+      MACHINE_SESSIONS,
+      OAUTH_SESSIONS
+    };
+
     const url = new URL(request.url);
 
     // ========== 处理扫码登录相关 API ==========
@@ -67,6 +119,7 @@ async function handleRequest(request, event) {
     }
 
     // 铺面列表 - 直接返回静态数据
+    // 注意：handleListAllCache 可能需要传入 LIST_CACHE 绑定，请根据实际模块调整
     const listAllResponse = await handleListAllCache(request);
     if (listAllResponse) return listAllResponse;
 
@@ -98,10 +151,8 @@ async function handleRequest(request, event) {
     // 确定当前代理域名（优先使用 PROXY_DOMAIN，否则从请求 URL 获取）
     const currentDomain = PROXY_DOMAIN || new URL(request.url).hostname;
 
-    // 克隆响应以便读取 body（如果需要）
+    // 克隆响应以便读取 body
     const responseForMod = response.clone();
-
-    // 获取 Content-Type
     const contentType = response.headers.get('Content-Type') || '';
 
     // 判断是否为文本类型（包括 HTML、JS、JSON、CSS、XML 等）
@@ -118,21 +169,18 @@ async function handleRequest(request, event) {
       let text = await responseForMod.text();
       
       // 替换 www.fandorabox.net 为当前域名
-      // 构造待替换的域名（www. + 原始目标域名）
       const targetDomainWithWww = 'www.' + TARGET_DOMAIN; // 例如 www.fandorabox.net
-      // 转义点号以用于正则
       const escapedTarget = targetDomainWithWww.replace(/\./g, '\\.');
       const regex = new RegExp(escapedTarget, 'g');
       const modifiedText = text.replace(regex, currentDomain);
 
-      // 构建新的响应，保持原有状态码和头，Content-Length 将自动计算
+      // 构建新的响应
       finalResponse = new Response(modifiedText, {
         status: response.status,
         statusText: response.statusText,
         headers: response.headers
       });
     } else {
-      // 非文本类型，直接使用原始响应
       finalResponse = response;
     }
 
@@ -143,11 +191,9 @@ async function handleRequest(request, event) {
           element.after(AD_CODE, { html: true });
         }
       });
-      // 对 finalResponse 进行转换
       finalResponse = rewriter.transform(finalResponse);
     }
 
-    // 现在 finalResponse 是最终响应，继续处理头部
     const modifiedResponse = finalResponse;
 
     // 处理 Set-Cookie（移除 Domain 属性）
@@ -165,14 +211,14 @@ async function handleRequest(request, event) {
       });
     }
 
-    // 处理重定向 Location（将目标域名替换为代理域名）
+    // 处理重定向 Location
     const location = modifiedResponse.headers.get('Location');
     if (location) {
       try {
         const locationUrl = new URL(location, TARGET_HOST);
         if (locationUrl.hostname === TARGET_DOMAIN) {
           const workerUrl = new URL(request.url);
-          workerUrl.hostname = PROXY_DOMAIN; // 使用代理域名
+          workerUrl.hostname = PROXY_DOMAIN;
           workerUrl.pathname = locationUrl.pathname;
           workerUrl.search = locationUrl.search;
           modifiedResponse.headers.set('Location', workerUrl.toString());
@@ -185,7 +231,7 @@ async function handleRequest(request, event) {
     modifiedResponse.headers.delete('Content-Security-Policy-Report-Only');
     modifiedResponse.headers.set('Access-Control-Allow-Origin', '*');
 
-    // 根路径缓存存储（缓存修改后的响应）
+    // 根路径缓存存储
     if (url.pathname === '/' && request.method === 'GET' && modifiedResponse.status === 200) {
       const responseToCache = modifiedResponse.clone();
       const newHeaders = new Headers(responseToCache.headers);
