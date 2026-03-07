@@ -48,8 +48,8 @@ export async function handleAuthRequest(request, bindings, frontendHost) {
     await MACHINE_SESSIONS.put(`token:${machineToken}`, machineId, { expirationTtl: 300 });
 
     const headers = new Headers();
-    headers.set('Set-Cookie', `machine-token=${machineToken}; Path=/; HttpOnly; Max-Age=300`);
-    headers.set('Set-Cookie', `machine-id=${machineId}; Path=/; HttpOnly; Max-Age=300`);
+  headers.append('Set-Cookie', `machine-token=${machineToken}; Path=/; HttpOnly; Max-Age=300`);
+  headers.append('Set-Cookie', `machine-id=${machineId}; Path=/; HttpOnly; Max-Age=300`);
     return new Response(null, { status: 200, headers });
   }
 
