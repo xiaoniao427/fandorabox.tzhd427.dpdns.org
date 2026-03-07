@@ -12,7 +12,7 @@ import { handleOfflineRequest, syncToOriginalServer } from './offline-handler.js
 import { handleAuthRequest } from './auth-handler.js';
 
 // 从环境变量获取配置
-let rawOrigin = globalThis.ORIGIN_HOST || 'https://fandorabox.net';
+let rawOrigin = globalThis.ORIGIN_HOST || 'https://www.fandorabox.net';
 if (!rawOrigin.startsWith('http://') && !rawOrigin.startsWith('https://')) {
   rawOrigin = 'https://' + rawOrigin;
 }
