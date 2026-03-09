@@ -11,23 +11,23 @@ ORIGIN_HOST = "https://fandorabox.net"
 # KV绑定
 [[kv_namespaces]]
 binding = "USER_DATA"
-id = "abd11477aaf045ae91b3577a3d879712"   # fork后替换为自己的ID
+id = "7b744239d2454e68b5e96b8db2728db2"   # fork后替换为自己的ID
 
 [[kv_namespaces]]
 binding = "SESSIONS"
-id = "d96787ddbe764df79cdccdd0b4535032"   # fork后替换为自己的ID
+id = "890e0c48c5984f35b368a2a54cd6bddf"   # fork后替换为自己的ID
 
 [[kv_namespaces]]
 binding = "PENDING_SCORES"
-id = "60e1434d441e4268a57912b052985e6f"   # fork后替换为自己的ID
+id = "7e615ab15b564d1ca5bbf0de5e239453"   # fork后替换为自己的ID
 
 [[kv_namespaces]]
 binding = "MACHINE_SESSIONS"
-id = "112c8296674e457bafdc0e2300d37d8d"   # 替换为实际 ID
+id = "47f3995ff8e5421198af81047f840aca"   # 替换为实际 ID
 
 [[kv_namespaces]]
 binding = "OAUTH_SESSIONS"
-id = "c634670eb8824e84afeba5fab94302fe"   # 替换为实际 ID
+id = "d1230ea023c54d92b9580f95b76c5d9a"   # 替换为实际 ID
 
 # 同步有bug，修好再动
 # [triggers]
